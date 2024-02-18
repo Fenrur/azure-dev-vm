@@ -1,13 +1,13 @@
 package fr.livio.azuredevvm;
 
 import com.azure.core.credential.TokenCredential;
-import com.azure.core.http.okhttp.OkHttpAsyncHttpClientBuilder;
+import com.azure.core.http.jdk.httpclient.JdkHttpClientBuilder;
 import com.azure.core.management.AzureEnvironment;
 import com.azure.core.management.profile.AzureProfile;
+import com.azure.core.util.Configuration;
 import com.azure.identity.ClientSecretCredentialBuilder;
 import com.azure.resourcemanager.AzureResourceManager;
 import jakarta.enterprise.inject.Produces;
-import okhttp3.Dispatcher;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import java.util.concurrent.Executors;
@@ -31,11 +31,10 @@ public class AzureProducer {
 
         return AzureResourceManager
                 .configure()
-//                .withHttpClient(
-//                        new OkHttpAsyncHttpClientBuilder()
-//                                .dispatcher(new Dispatcher(Executors.newVirtualThreadPerTaskExecutor()))
-//                                .build()
-//                )
+                .withHttpClient(
+                        new JdkHttpClientBuilder()
+                                .build()
+                )
                 .authenticate(credential, profile)
                 .withDefaultSubscription();
     }

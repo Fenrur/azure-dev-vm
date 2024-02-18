@@ -46,18 +46,6 @@
     </dependency>
     <dependency>
       <groupId>io.quarkus</groupId>
-      <artifactId>quarkus-hibernate-reactive-panache</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>io.quarkus</groupId>
-      <artifactId>quarkus-security-jpa-reactive</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>io.quarkus</groupId>
-      <artifactId>quarkus-reactive-pg-client</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>io.quarkus</groupId>
       <artifactId>quarkus-resteasy-reactive-jackson</artifactId>
     </dependency>
     <dependency>
@@ -65,13 +53,20 @@
       <artifactId>quarkus-scheduler</artifactId>
     </dependency>
     <dependency>
-      <groupId>io.quarkiverse.jsch</groupId>
-      <artifactId>quarkus-jsch</artifactId>
-      <version>3.0.6</version>
+      <groupId>io.quarkus</groupId>
+      <artifactId>quarkus-hibernate-validator</artifactId>
     </dependency>
     <dependency>
       <groupId>io.quarkus</groupId>
-      <artifactId>quarkus-hibernate-validator</artifactId>
+      <artifactId>quarkus-jdbc-postgresql</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.quarkus</groupId>
+      <artifactId>quarkus-security-jpa</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.quarkus</groupId>
+      <artifactId>quarkus-hibernate-orm-panache</artifactId>
     </dependency>
     <dependency>
       <groupId>io.quarkus</groupId>
@@ -89,34 +84,9 @@
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>com.azure.resourcemanager</groupId>
-      <artifactId>azure-resourcemanager-compute</artifactId>
-      <version>2.35.0</version>
-    </dependency>
-    <dependency>
-      <groupId>com.azure</groupId>
-      <artifactId>azure-security-keyvault-secrets</artifactId>
-      <version>4.7.3</version>
-    </dependency>
-    <dependency>
-      <groupId>com.azure</groupId>
-      <artifactId>azure-core-http-jdk-httpclient</artifactId>
-      <version>1.0.0-beta.10</version>
-    </dependency>
-    <dependency>
-      <groupId>com.azure</groupId>
-      <artifactId>azure-core-http-okhttp</artifactId>
-      <version>1.11.18</version>
-    </dependency>
-    <dependency>
       <groupId>com.sigpwned</groupId>
       <artifactId>jackson-modules-java17-sealed-classes</artifactId>
       <version>0.0.0</version>
-    </dependency>
-    <dependency>
-      <groupId>com.azure</groupId>
-      <artifactId>azure-core-serializer-json-jackson</artifactId>
-      <version>1.4.9</version>
     </dependency>
     <dependency>
       <groupId>com.azure.resourcemanager</groupId>
@@ -127,6 +97,21 @@
       <groupId>com.azure</groupId>
       <artifactId>azure-identity</artifactId>
       <version>1.11.2</version>
+    </dependency>
+    <dependency>
+      <groupId>com.azure</groupId>
+      <artifactId>azure-core-http-jdk-httpclient</artifactId>
+      <version>1.0.0-beta.10</version>
+    </dependency>
+    <dependency>
+      <groupId>com.azure</groupId>
+      <artifactId>azure-core</artifactId>
+      <version>1.46.0</version>
+    </dependency>
+    <dependency>
+      <groupId>com.azure</groupId>
+      <artifactId>azure-core-management</artifactId>
+      <version>1.11.10</version>
     </dependency>
   </dependencies>
   <build>

@@ -1,6 +1,5 @@
 package fr.livio.azuredevvm;
 
-import io.quarkus.hibernate.reactive.panache.common.WithSession;
 import io.quarkus.logging.Log;
 import io.quarkus.scheduler.Scheduled;
 import io.smallrye.mutiny.Uni;

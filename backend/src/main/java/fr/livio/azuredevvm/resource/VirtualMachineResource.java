@@ -5,12 +5,12 @@ import com.tietoevry.quarkus.resteasy.problem.HttpProblem;
 import fr.livio.azuredevvm.CollectorUtils;
 import fr.livio.azuredevvm.Role;
 import fr.livio.azuredevvm.VirtualMachineService;
-import fr.livio.azuredevvm.entity.User;
-import fr.livio.azuredevvm.entity.VirtualMachine;
-import io.smallrye.mutiny.Uni;
-import io.smallrye.mutiny.unchecked.Unchecked;
+import fr.livio.azuredevvm.entity.UserEntity;
+import fr.livio.azuredevvm.entity.VirtualMachineEntity;
+import io.smallrye.common.annotation.RunOnVirtualThread;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
+import jakarta.transaction.Transactional;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.*;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
@@ -21,6 +21,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.UUID;
 
 @Path("/api/vms")
+@RunOnVirtualThread
 public class VirtualMachineResource {
 
     @Inject
@@ -29,8 +30,14 @@ public class VirtualMachineResource {
     @Inject
     AzureResourceManager arm;
 
-    @ConfigProperty(name = "azure.max-vms", defaultValue = "0")
-    int maxVirtualMachines;
+    @ConfigProperty(name = "azure.global.max-vms", defaultValue = "0")
+    int maxGlobalVirtualMachines;
+
+    @ConfigProperty(name = "azure.global.max-vms.role.advanced", defaultValue = "0")
+    int maxVirtualMachinesWithAdvancedRole;
+
+    @ConfigProperty(name = "azure.global.max-vms.role.basic", defaultValue = "0")
+    int maxBasicVirtualMachinesWithBasicRole;
 
     public record UpdateVirtualMachineRequestBody(UUID machineId, String username) {
     }
@@ -40,11 +47,18 @@ public class VirtualMachineResource {
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     @ResponseStatus(200)
-    public Uni<Void> putVirtualMachine(UpdateVirtualMachineRequestBody body) {
-        return User
-                .findByUsername(body.username)
-                .onItem().transformToUni(user -> VirtualMachine.put(body.machineId, user))
-                .replaceWithVoid();
+    @Transactional
+    public void putVirtualMachine(UpdateVirtualMachineRequestBody body) {
+        final UserEntity user = UserEntity.findByUsername(body.username);
+        if (user == null) {
+            throw HttpProblem.builder().withTitle("User not found").withStatus(Response.Status.NOT_FOUND).build();
+        }
+
+        try {
+            VirtualMachineEntity.put(body.machineId, user);
+        } catch (Exception e) {
+            throw HttpProblem.builder().withTitle("Virtual machine not found").withStatus(Response.Status.NOT_FOUND).build();
+        }
     }
 
     public record VirtualMachinesByUserResponseBody(MultivaluedHashMap<String, UUID> virtualMachineIds) {
@@ -54,34 +68,30 @@ public class VirtualMachineResource {
     @RolesAllowed({Role.Name.ADMIN, Role.Name.ADVANCED, Role.Name.BASIC})
     @Produces(MediaType.APPLICATION_JSON)
     @ResponseStatus(200)
-    public Uni<VirtualMachinesByUserResponseBody> getVirtualMachinesByUser(@Context SecurityContext securityContext) throws IOException {
+    public VirtualMachinesByUserResponseBody getVirtualMachinesByUser(@Context SecurityContext securityContext) throws IOException {
         final String appUsername = securityContext.getUserPrincipal().getName();
 
         if (securityContext.isUserInRole(Role.Name.ADMIN)) {
-            return VirtualMachine
-                    .listAllVirtualMachines()
-                    .map(virtualMachines ->
-                            virtualMachines
-                                    .stream()
-                                    .collect(CollectorUtils.toMultivaluedMap(
-                                            virtualMachine -> virtualMachine.owner.username,
-                                            virtualMachine -> virtualMachine.machineId
-                                    ))
-                    )
-                    .map(VirtualMachinesByUserResponseBody::new);
+            return new VirtualMachinesByUserResponseBody(
+                    VirtualMachineEntity
+                            .listAllVirtualMachines()
+                            .stream()
+                            .collect(CollectorUtils.toMultivaluedMap(
+                                    virtualMachine -> virtualMachine.owner.username,
+                                    virtualMachine -> virtualMachine.machineId
+                            ))
+            );
         }
 
-        return VirtualMachine
-                .findByUsername(appUsername)
-                .map(virtualMachines ->
-                        virtualMachines
-                                .stream()
-                                .collect(CollectorUtils.toMultivaluedMap(
-                                        virtualMachine -> virtualMachine.owner.username,
-                                        virtualMachine -> virtualMachine.machineId
-                                ))
-                )
-                .map(VirtualMachinesByUserResponseBody::new);
+        return new VirtualMachinesByUserResponseBody(
+                VirtualMachineEntity
+                        .findByUsername(appUsername)
+                        .stream()
+                        .collect(CollectorUtils.toMultivaluedMap(
+                                virtualMachine -> virtualMachine.owner.username,
+                                virtualMachine -> virtualMachine.machineId
+                        ))
+        );
     }
 
     public record DeleteVirtualMachineRequestBody(UUID machineId) {
@@ -93,31 +103,42 @@ public class VirtualMachineResource {
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     @ResponseStatus(200)
-    public Uni<Void> deleteVirtualMachine(@Context SecurityContext securityContext, DeleteVirtualMachineRequestBody body) {
+    @Transactional
+    public void deleteVirtualMachine(@Context SecurityContext securityContext, DeleteVirtualMachineRequestBody body) {
         final String appUsername = securityContext.getUserPrincipal().getName();
 
         if (securityContext.isUserInRole(Role.Name.ADMIN)) {
-            try {
-                virtualMachineService
-                        .delete(body.machineId());
-            } catch (Exception e) {
-                return Uni
-                        .createFrom()
-                        .failure(HttpProblem.builder().withTitle("Not found machine in azure").withStatus(Response.Status.NOT_FOUND).build());
+            if (VirtualMachineEntity.deleteByMachineId(body.machineId()) == 0) {
+                throw HttpProblem.builder().withTitle("Not found machine in db").withStatus(Response.Status.NOT_FOUND).build();
             }
 
-            return Uni.createFrom().voidItem();
+            try {
+                virtualMachineService.delete(body.machineId());
+            } catch (Exception e) {
+                throw HttpProblem.builder().withTitle("Not found machine in azure").withStatus(Response.Status.NOT_FOUND).build();
+            }
+        } else {
+            final UserEntity user = UserEntity.findByUsername(appUsername);
+
+            if (user == null) {
+                throw HttpProblem.builder().withTitle("User not found").withStatus(Response.Status.NOT_FOUND).build();
+            }
+
+            if (VirtualMachineEntity.deleteFromUser(body.machineId(), user) == 0) {
+                throw HttpProblem.builder().withTitle("Not found machine in db").withStatus(Response.Status.NOT_FOUND).build();
+            }
+
+            try {
+                virtualMachineService.delete(body.machineId());
+            } catch (Exception e) {
+                throw HttpProblem.builder().withTitle("Not found machine in azure").withStatus(Response.Status.NOT_FOUND).build();
+            }
         }
 
-        return User.findByUsername(appUsername)
-                .onItem().transformToUni(user -> VirtualMachine.deleteFromUser(body.machineId(), user))
-                .onFailure().transform(throwable -> HttpProblem.builder().withTitle("Not found machine in db for deleting").withStatus(Response.Status.NOT_FOUND).build())
-                .onItem().invoke(() -> virtualMachineService.delete(body.machineId()))
-                .onFailure().transform(throwable -> HttpProblem.builder().withTitle("Not found machine in azure").withStatus(Response.Status.NOT_FOUND).build())
-                .replaceWithVoid();
     }
 
-    public record CreateVirtualMachineResponseBody(UUID machineId, VirtualMachineService.CreatedVirtualMachine createdVirtualMachine) {
+    public record CreateVirtualMachineResponseBody(UUID machineId,
+                                                   VirtualMachineService.CreatedVirtualMachine createdVirtualMachine) {
 
     }
 
@@ -126,42 +147,64 @@ public class VirtualMachineResource {
     @Produces(MediaType.APPLICATION_JSON)
     @Consumes(MediaType.APPLICATION_JSON)
     @ResponseStatus(201)
-    public Uni<CreateVirtualMachineResponseBody> createVirtualMachine(@Context SecurityContext securityContext, VirtualMachineService.VirtualMachineSpecification spec) throws NoSuchAlgorithmException {
+    @Transactional
+    public CreateVirtualMachineResponseBody createVirtualMachine(@Context SecurityContext securityContext, VirtualMachineService.VirtualMachineSpecification spec) throws NoSuchAlgorithmException {
         final String appUsername = securityContext.getUserPrincipal().getName();
-//
-//        VirtualMachine
-//                .count()
-//                .onItem().transform(Unchecked.function(count -> {
-//                    if (count >= maxVirtualMachines) {
-//                        throw HttpProblem.builder().withTitle("Max virtual machines reached").withStatus(Response.Status.CONFLICT).build();
-//                    }
-//                    return count;
-//                }))
-//
-//
-//        if (securityContext.isUserInRole(Role.Name.BASIC)) {
-//            Role.BASIC.maxVirtualMachines();
-//            VirtualMachine
-//                    .findByUsername(appUsername);
-//
-//        }
-//        else if (securityContext.isUserInRole(Role.Name.ADVANCED)) {
-//
-//        }
-//        else {
-//            throw HttpProblem.builder().withTitle("Not found role").withStatus(Response.Status.NOT_FOUND).build();
-//        }
-
         final UUID machineId = UUID.randomUUID();
+
+        if (VirtualMachineEntity.exists(machineId)) {
+            throw HttpProblem.builder()
+                    .withTitle("Virtual machine already exists")
+                    .withStatus(Response.Status.CONFLICT)
+                    .build();
+        }
+
+        if (VirtualMachineEntity.count() >= maxGlobalVirtualMachines) {
+            throw HttpProblem.builder()
+                    .withTitle("Max virtual machines reached")
+                    .withStatus(Response.Status.FORBIDDEN)
+                    .build();
+        }
+
+        if (securityContext.isUserInRole(Role.Name.ADVANCED) && VirtualMachineEntity.findByUsername(appUsername).size() >= maxVirtualMachinesWithAdvancedRole) {
+            throw HttpProblem.builder()
+                    .withTitle("Max virtual machines per user reached")
+                    .withDetail("You have reached the maximum number '%s' of virtual machines for your role".formatted(maxVirtualMachinesWithAdvancedRole))
+                    .withStatus(Response.Status.FORBIDDEN)
+                    .build();
+        }
+
+        if (securityContext.isUserInRole(Role.Name.BASIC) && VirtualMachineEntity.findByUsername(appUsername).size() >= maxBasicVirtualMachinesWithBasicRole) {
+            throw HttpProblem.builder()
+                    .withTitle("Max virtual machines per user reached")
+                    .withDetail("You have reached the maximum number '%s' of virtual machines for your role".formatted(maxBasicVirtualMachinesWithBasicRole))
+                    .withStatus(Response.Status.FORBIDDEN)
+                    .build();
+        }
+
+        final UserEntity user = UserEntity.findByUsername(appUsername);
+        if (user == null) {
+            throw HttpProblem.builder().withTitle("User not found").withStatus(Response.Status.NOT_FOUND).build();
+        }
+
+        user.token -= 1;
+
+        if (user.token < 0) {
+            throw HttpProblem.builder().withTitle("Not enough tokens").withStatus(Response.Status.FORBIDDEN).build();
+        }
+
+        user.persistAndFlush();
 
         try {
             final VirtualMachineService.CreatedVirtualMachine createdVirtualMachine = virtualMachineService.create(machineId, spec);
 
-            return User
-                    .findByUsername(appUsername)
-                    .onItem().transformToUni(user -> VirtualMachine.put(machineId, user))
-                    .onFailure().transform(throwable -> HttpProblem.builder().withTitle("Not found user in db for creating").withStatus(Response.Status.NOT_FOUND).build())
-                    .onItem().transformToUni(user -> Uni.createFrom().item(new CreateVirtualMachineResponseBody(machineId, createdVirtualMachine)));
+            try {
+                VirtualMachineEntity.put(machineId, user);
+            } catch (Exception e) {
+                throw HttpProblem.builder().withTitle("Not found user in db for creating").withStatus(Response.Status.NOT_FOUND).build();
+            }
+
+            return new CreateVirtualMachineResponseBody(machineId, createdVirtualMachine);
         } catch (VirtualMachineService.ExistingVirtualMachineException e) {
             throw HttpProblem.builder()
                     .withTitle("Virtual machine already exists")

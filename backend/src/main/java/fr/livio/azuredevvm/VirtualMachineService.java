@@ -10,18 +10,11 @@ import com.azure.resourcemanager.network.models.PublicIpAddress;
 import com.azure.resourcemanager.resources.models.ResourceGroup;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.annotation.JsonTypeName;
-import fr.livio.azuredevvm.entity.User;
-import io.smallrye.mutiny.Uni;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 
-import java.time.OffsetDateTime;
-import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 @Singleton
 public class VirtualMachineService {
@@ -31,31 +24,31 @@ public class VirtualMachineService {
     @Inject
     AzureResourceManager arm;
 
-    public Uni<Map<String, OffsetDateTime>> getCreationByAppUsername() {
-        return User
-                .listAllUsers()
-                .map(u -> {
-                    final List<User> users = u
-                            .stream()
-                            .filter(user -> user.role.equals("user"))
-                            .toList();
-
-                    return users
-                            .stream()
-                            .flatMap(user -> {
-                                try {
-                                    final OffsetDateTime timeCreated = arm
-                                            .virtualMachines()
-                                            .getByResourceGroup(user.username, user.username)
-                                            .timeCreated();
-                                    return Stream.of(Map.entry(user.username, timeCreated));
-                                } catch (Exception ignored) {
-                                }
-                                return Stream.empty();
-                            })
-                            .collect(Collectors.toUnmodifiableMap(Map.Entry::getKey, Map.Entry::getValue));
-                });
-    }
+//    public Uni<Map<String, OffsetDateTime>> getCreationByAppUsername() {
+//        return User
+//                .listAllUsers()
+//                .map(u -> {
+//                    final List<User> users = u
+//                            .stream()
+//                            .filter(user -> user.role.equals("user"))
+//                            .toList();
+//
+//                    return users
+//                            .stream()
+//                            .flatMap(user -> {
+//                                try {
+//                                    final OffsetDateTime timeCreated = arm
+//                                            .virtualMachines()
+//                                            .getByResourceGroup(user.username, user.username)
+//                                            .timeCreated();
+//                                    return Stream.of(Map.entry(user.username, timeCreated));
+//                                } catch (Exception ignored) {
+//                                }
+//                                return Stream.empty();
+//                            })
+//                            .collect(Collectors.toUnmodifiableMap(Map.Entry::getKey, Map.Entry::getValue));
+//                });
+//    }
 
     public static class VirtualMachineServiceException extends RuntimeException {
         public VirtualMachineServiceException(String message) {

@@ -1,6 +1,8 @@
 package fr.livio.azuredevvm.resource;
 
-import com.azure.resourcemanager.AzureResourceManager;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import com.fasterxml.jackson.annotation.JsonTypeName;
 import com.tietoevry.quarkus.resteasy.problem.HttpProblem;
 import fr.livio.azuredevvm.CollectorUtils;
 import fr.livio.azuredevvm.Role;
@@ -18,6 +20,8 @@ import org.jboss.resteasy.reactive.ResponseStatus;
 
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Path("/api/vms")
@@ -26,9 +30,6 @@ public class VirtualMachineResource {
 
     @Inject
     VirtualMachineService virtualMachineService;
-
-    @Inject
-    AzureResourceManager arm;
 
     @ConfigProperty(name = "azure.global.max-vms", defaultValue = "0")
     int maxGlobalVirtualMachines;
@@ -61,7 +62,7 @@ public class VirtualMachineResource {
         }
     }
 
-    public record VirtualMachinesByUserResponseBody(MultivaluedHashMap<String, UUID> virtualMachineIds) {
+    public record VirtualMachinesByUserResponseBody(Map<String, List<UUID>> virtualMachineIds) {
     }
 
     @GET
@@ -137,9 +138,47 @@ public class VirtualMachineResource {
 
     }
 
-    public record CreateVirtualMachineResponseBody(UUID machineId,
-                                                   VirtualMachineService.CreatedVirtualMachine createdVirtualMachine) {
+    @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
+    public sealed interface CreateVirtualMachineRequestBody {
 
+        @JsonTypeName("linux")
+        record Linux(String hostname,
+                     String rootUsername) implements CreateVirtualMachineRequestBody {
+            @Override
+            public VirtualMachineService.VirtualMachineSpecification.Linux toVirtualMachineSpecification() {
+                return new VirtualMachineService.VirtualMachineSpecification.Linux(hostname, rootUsername);
+            }
+        }
+
+        @JsonTypeName("windows")
+        record Windows(String version) implements CreateVirtualMachineRequestBody {
+            @Override
+            public VirtualMachineService.VirtualMachineSpecification.Windows toVirtualMachineSpecification() {
+                return new VirtualMachineService.VirtualMachineSpecification.Windows(version);
+            }
+        }
+
+        @JsonIgnore
+        VirtualMachineService.VirtualMachineSpecification toVirtualMachineSpecification();
+    }
+
+    @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
+    public interface CreateVirtualMachineResponseBody {
+        @JsonTypeName("linux")
+        record Linux(UUID machineId, String hostname, String rootUsername, String password) implements CreateVirtualMachineResponseBody { }
+        @JsonTypeName("windows")
+        record Windows(UUID machineId) implements CreateVirtualMachineResponseBody { }
+
+        UUID machineId();
+
+        static CreateVirtualMachineResponseBody from(UUID machineId, VirtualMachineService.CreatedVirtualMachine createdVirtualMachine) {
+            return switch (createdVirtualMachine) {
+                case VirtualMachineService.CreatedVirtualMachine.Linux linux ->
+                    new Linux(machineId, linux.hostname(), linux.rootUsername(), linux.password());
+                case VirtualMachineService.CreatedVirtualMachine.Windows windows ->
+                    new Windows(machineId);
+            };
+        }
     }
 
     @POST
@@ -148,9 +187,10 @@ public class VirtualMachineResource {
     @Consumes(MediaType.APPLICATION_JSON)
     @ResponseStatus(201)
     @Transactional
-    public CreateVirtualMachineResponseBody createVirtualMachine(@Context SecurityContext securityContext, VirtualMachineService.VirtualMachineSpecification spec) throws NoSuchAlgorithmException {
+    public CreateVirtualMachineResponseBody createVirtualMachine(@Context SecurityContext securityContext, CreateVirtualMachineRequestBody body) throws NoSuchAlgorithmException {
         final String appUsername = securityContext.getUserPrincipal().getName();
         final UUID machineId = UUID.randomUUID();
+        final var spec = body.toVirtualMachineSpecification();
 
         if (VirtualMachineEntity.exists(machineId)) {
             throw HttpProblem.builder()
@@ -196,7 +236,7 @@ public class VirtualMachineResource {
         user.persistAndFlush();
 
         try {
-            final VirtualMachineService.CreatedVirtualMachine createdVirtualMachine = virtualMachineService.create(machineId, spec);
+            final var createdVirtualMachine = virtualMachineService.create(machineId, spec);
 
             try {
                 VirtualMachineEntity.put(machineId, user);
@@ -204,7 +244,7 @@ public class VirtualMachineResource {
                 throw HttpProblem.builder().withTitle("Not found user in db for creating").withStatus(Response.Status.NOT_FOUND).build();
             }
 
-            return new CreateVirtualMachineResponseBody(machineId, createdVirtualMachine);
+            return CreateVirtualMachineResponseBody.from(machineId, createdVirtualMachine);
         } catch (VirtualMachineService.ExistingVirtualMachineException e) {
             throw HttpProblem.builder()
                     .withTitle("Virtual machine already exists")

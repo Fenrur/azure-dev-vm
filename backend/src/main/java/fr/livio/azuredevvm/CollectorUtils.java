@@ -26,14 +26,14 @@ public class CollectorUtils {
     public static <T, K, U> Collector<T, ?, MultivaluedHashMap<K, U>> toMultivaluedMap(
             Function<? super T, ? extends K> keyMapper,
             Function<? super T, ? extends U> valueMapper) {
-        Supplier<MultivaluedHashMap<K, U>> supplier = MultivaluedHashMap::new;
+        final Supplier<MultivaluedHashMap<K, U>> supplier = MultivaluedHashMap::new;
 
-        BiConsumer<MultivaluedHashMap<K, U>, T> accumulator = (map, element) -> map.add(
+        final BiConsumer<MultivaluedHashMap<K, U>, T> accumulator = (map, element) -> map.add(
                 keyMapper.apply(element),
                 valueMapper.apply(element)
         );
 
-        BinaryOperator<MultivaluedHashMap<K, U>> combiner = (map1, map2) -> {
+        final BinaryOperator<MultivaluedHashMap<K, U>> combiner = (map1, map2) -> {
             map2.forEach((key, value1) -> value1.forEach(value -> map1.add(key, value)));
             return map1;
         };

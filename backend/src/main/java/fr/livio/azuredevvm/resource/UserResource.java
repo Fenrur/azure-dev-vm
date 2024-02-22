@@ -15,6 +15,7 @@ import jakarta.ws.rs.core.SecurityContext;
 import org.jboss.resteasy.reactive.ResponseStatus;
 
 import java.util.List;
+import java.util.Optional;
 
 @Path("/api/users")
 @RunOnVirtualThread
@@ -46,7 +47,7 @@ public class UserResource {
         );
     }
 
-    public record CreateUserBodyRequest(String username, String password, String role, int token) {
+    public record CreateUserRequestBody(String username, String password, String role, int token) {
     }
 
     @POST
@@ -55,7 +56,7 @@ public class UserResource {
     @RolesAllowed({Role.Name.ADMIN})
     @ResponseStatus(201)
     @Transactional
-    public void create(CreateUserBodyRequest body) {
+    public void create(CreateUserRequestBody body) {
         if (UserEntity.exists(body.username)) {
             throw HttpProblem.builder().withTitle("User already exists").withStatus(Response.Status.CONFLICT).build();
         } else {
@@ -77,35 +78,41 @@ public class UserResource {
             UserEntity.updateToken(body.username(), body.token());
         } catch (Exception e) {
             Log.error("Error updating token", e);
-            throw HttpProblem.builder().withTitle("User not found").withStatus(Response.Status.NOT_FOUND).build();
+            throw HttpProblem.builder()
+                    .withTitle("User not found")
+                    .withStatus(Response.Status.NOT_FOUND)
+                    .build();
         }
     }
+
+    public record GetTokenResponseBody(int token) { }
 
     @GET
     @Path("/token")
-    @RolesAllowed({Role.Name.ADMIN})
-    @Produces(MediaType.APPLICATION_JSON)
-    @ResponseStatus(200)
-    public Integer getToken(@QueryParam("username") String username) {
-        final UserEntity user = UserEntity.findByUsername(username);
-        if (user == null) {
-            throw HttpProblem.builder().withTitle("User not found").withStatus(Response.Status.NOT_FOUND).build();
-        }
-
-        return user.token;
-    }
-
-    @GET
-    @Path("/token/me")
     @RolesAllowed({Role.Name.ADMIN, Role.Name.ADVANCED, Role.Name.BASIC})
     @Produces(MediaType.APPLICATION_JSON)
     @ResponseStatus(200)
-    public int getMyToken(@Context SecurityContext securityContext) {
-        final UserEntity user = UserEntity.findByUsername(securityContext.getUserPrincipal().getName());
-        if (user == null) {
-            throw HttpProblem.builder().withTitle("User not found").withStatus(Response.Status.NOT_FOUND).build();
+    public GetTokenResponseBody getToken(@Context SecurityContext securityContext, @QueryParam("username") Optional<String> username) {
+        if (securityContext.isUserInRole("admin") && username.isPresent()) {
+            final UserEntity user = UserEntity.findByUsername(username.get());
+            if (user == null) {
+                throw HttpProblem.builder()
+                        .withTitle("User not found")
+                        .withStatus(Response.Status.NOT_FOUND)
+                        .build();
+            }
+
+            return new GetTokenResponseBody(user.token);
         }
 
-        return user.token;
+        final UserEntity user = UserEntity.findByUsername(securityContext.getUserPrincipal().getName());
+        if (user == null) {
+            throw HttpProblem.builder()
+                    .withTitle("User not found")
+                    .withStatus(Response.Status.NOT_FOUND)
+                    .build();
+        }
+
+        return new GetTokenResponseBody(user.token);
     }
 }

@@ -2,7 +2,6 @@ package fr.livio.azuredevvm;
 
 import com.azure.core.management.Region;
 import com.azure.resourcemanager.AzureResourceManager;
-import com.azure.resourcemanager.compute.models.KnownLinuxVirtualMachineImage;
 import com.azure.resourcemanager.compute.models.VirtualMachine;
 import com.azure.resourcemanager.network.models.Network;
 import com.azure.resourcemanager.network.models.NetworkInterface;
@@ -57,7 +56,7 @@ public class VirtualMachineService {
     @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
     public sealed interface VirtualMachineSpecification {
         @JsonTypeName("linux")
-        public record Linux(String hostname, String rootUsername) implements VirtualMachineSpecification { }
+        public record Linux(String hostname, String rootUsername, String password) implements VirtualMachineSpecification { }
         @JsonTypeName("windows")
         public record Windows(String version) implements VirtualMachineSpecification { }
     }
@@ -65,7 +64,7 @@ public class VirtualMachineService {
     @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
     public sealed interface CreatedVirtualMachine {
         @JsonTypeName("linux")
-        public record Linux(String hostname, String rootUsername, String password) implements CreatedVirtualMachine { }
+        public record Linux(String hostname, String rootUsername, String password, String publicAddress) implements CreatedVirtualMachine { }
         @JsonTypeName("windows")
         public record Windows() implements CreatedVirtualMachine { }
     }
@@ -75,6 +74,7 @@ public class VirtualMachineService {
             super("Virtual machine already exists");
         }
     }
+
 
     public CreatedVirtualMachine create(UUID machineId, VirtualMachineSpecification spec) throws ExistingVirtualMachineException {
         applyResourceGroup(machineId);
@@ -92,7 +92,16 @@ public class VirtualMachineService {
 
         deleteDisk(machineId);
 
-        return createVirtualMachine(machineId, spec, networkInterface);
+        createVirtualMachine(machineId, spec, networkInterface);
+
+        final PublicIpAddress provisionnedPublicIpAddress = getPublicIpAddress(machineId);
+
+        return switch (spec) {
+            case VirtualMachineSpecification.Linux linux ->
+                    new CreatedVirtualMachine.Linux(linux.hostname, linux.rootUsername, linux.password, provisionnedPublicIpAddress.ipAddress());
+            case VirtualMachineSpecification.Windows windows ->
+                    throw new VirtualMachineServiceException("Not implemented");
+        };
     }
 
     public void delete(UUID machineId) {
@@ -111,6 +120,12 @@ public class VirtualMachineService {
         }
     }
 
+    private PublicIpAddress getPublicIpAddress(UUID machineId) {
+        return arm
+                .publicIpAddresses()
+                .getByResourceGroup(PREFIX_RESOURCE_GROUP_NAME + machineId, machineId.toString());
+    }
+
     public Optional<VirtualMachine> getVirtualMachine(UUID machineId) {
         try {
             return Optional.of(
@@ -123,30 +138,26 @@ public class VirtualMachineService {
         return Optional.empty();
     }
 
-    private CreatedVirtualMachine createVirtualMachine(UUID machineId, VirtualMachineSpecification spec, NetworkInterface networkInterface) {
-        switch (spec) {
+    private VirtualMachine createVirtualMachine(UUID machineId, VirtualMachineSpecification spec, NetworkInterface networkInterface) {
+        return switch (spec) {
             case VirtualMachineSpecification.Linux linux -> {
-                final String password = "P@ssw0rdP@ssw0rd";
-
-                arm
+                yield arm
                         .virtualMachines()
                         .define(machineId.toString())
                         .withRegion(Region.EUROPE_WEST)
                         .withExistingResourceGroup(PREFIX_RESOURCE_GROUP_NAME + machineId)
                         .withExistingPrimaryNetworkInterface(networkInterface)
-                        .withPopularLinuxImage(KnownLinuxVirtualMachineImage.DEBIAN_10)
+                        .withLatestLinuxImage("debian", "debian-12", "12")
                         .withRootUsername(linux.rootUsername())
-                        .withRootPassword(password)
+                        .withRootPassword(linux.password())
                         .withComputerName(linux.hostname())
                         .withSize("Standard_DS1_v2")
                         .create();
-
-                return new CreatedVirtualMachine.Linux(linux.hostname(), linux.rootUsername(), password);
             }
             case VirtualMachineSpecification.Windows windows -> {
                 throw new VirtualMachineServiceException("Not implemented");
             }
-        }
+        };
     }
 
     private NetworkInterface applyNetworkInterface(UUID machineId, Network network, PublicIpAddress publicIpAddress) {

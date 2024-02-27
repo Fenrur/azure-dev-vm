@@ -5,6 +5,7 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.annotation.JsonTypeName;
 import com.tietoevry.quarkus.resteasy.problem.HttpProblem;
 import fr.livio.azuredevvm.CollectorUtils;
+import fr.livio.azuredevvm.MaxThresholdVirtualMachine;
 import fr.livio.azuredevvm.Role;
 import fr.livio.azuredevvm.VirtualMachineService;
 import fr.livio.azuredevvm.entity.UserEntity;
@@ -31,14 +32,8 @@ public class VirtualMachineResource {
     @Inject
     VirtualMachineService virtualMachineService;
 
-    @ConfigProperty(name = "azure.global.max-vms", defaultValue = "0")
-    int maxGlobalVirtualMachines;
-
-    @ConfigProperty(name = "azure.global.max-vms.role.advanced", defaultValue = "0")
-    int maxVirtualMachinesWithAdvancedRole;
-
-    @ConfigProperty(name = "azure.global.max-vms.role.basic", defaultValue = "0")
-    int maxBasicVirtualMachinesWithBasicRole;
+    @Inject
+    MaxThresholdVirtualMachine maxThresholdVirtualMachine;
 
     public record UpdateVirtualMachineRequestBody(UUID machineId, String username) {
     }
@@ -62,7 +57,7 @@ public class VirtualMachineResource {
         }
     }
 
-    public record VirtualMachinesByUserResponseBody(Map<String, List<UUID>> virtualMachineIds) {
+    public record VirtualMachinesByUserResponseBody(Map<String, List<UUID>> virtualMachines) {
     }
 
     @GET
@@ -95,26 +90,21 @@ public class VirtualMachineResource {
         );
     }
 
-    public record DeleteVirtualMachineRequestBody(UUID machineId) {
-
-    }
-
     @DELETE
+    @Path("/{machineId}")
     @RolesAllowed({Role.Name.ADMIN, Role.Name.ADVANCED, Role.Name.BASIC})
-    @Consumes(MediaType.APPLICATION_JSON)
-    @Produces(MediaType.APPLICATION_JSON)
     @ResponseStatus(200)
     @Transactional
-    public void deleteVirtualMachine(@Context SecurityContext securityContext, DeleteVirtualMachineRequestBody body) {
+    public void deleteVirtualMachine(@Context SecurityContext securityContext, @PathParam("machineId") UUID machineId) {
         final String appUsername = securityContext.getUserPrincipal().getName();
 
         if (securityContext.isUserInRole(Role.Name.ADMIN)) {
-            if (VirtualMachineEntity.deleteByMachineId(body.machineId()) == 0) {
+            if (VirtualMachineEntity.deleteByMachineId(machineId) == 0) {
                 throw HttpProblem.builder().withTitle("Not found machine in db").withStatus(Response.Status.NOT_FOUND).build();
             }
 
             try {
-                virtualMachineService.delete(body.machineId());
+                virtualMachineService.delete(machineId);
             } catch (Exception e) {
                 throw HttpProblem.builder().withTitle("Not found machine in azure").withStatus(Response.Status.NOT_FOUND).build();
             }
@@ -125,12 +115,12 @@ public class VirtualMachineResource {
                 throw HttpProblem.builder().withTitle("User not found").withStatus(Response.Status.NOT_FOUND).build();
             }
 
-            if (VirtualMachineEntity.deleteFromUser(body.machineId(), user) == 0) {
+            if (VirtualMachineEntity.deleteFromUser(machineId, user) == 0) {
                 throw HttpProblem.builder().withTitle("Not found machine in db").withStatus(Response.Status.NOT_FOUND).build();
             }
 
             try {
-                virtualMachineService.delete(body.machineId());
+                virtualMachineService.delete(machineId);
             } catch (Exception e) {
                 throw HttpProblem.builder().withTitle("Not found machine in azure").withStatus(Response.Status.NOT_FOUND).build();
             }
@@ -145,27 +135,27 @@ public class VirtualMachineResource {
         record Linux(String hostname,
                      String rootUsername) implements CreateVirtualMachineRequestBody {
             @Override
-            public VirtualMachineService.VirtualMachineSpecification.Linux toVirtualMachineSpecification() {
-                return new VirtualMachineService.VirtualMachineSpecification.Linux(hostname, rootUsername);
+            public VirtualMachineService.VirtualMachineSpecification.Linux toVirtualMachineSpecification(String password) {
+                return new VirtualMachineService.VirtualMachineSpecification.Linux(hostname, rootUsername, password);
             }
         }
 
         @JsonTypeName("windows")
         record Windows(String version) implements CreateVirtualMachineRequestBody {
             @Override
-            public VirtualMachineService.VirtualMachineSpecification.Windows toVirtualMachineSpecification() {
+            public VirtualMachineService.VirtualMachineSpecification.Windows toVirtualMachineSpecification(String password) {
                 return new VirtualMachineService.VirtualMachineSpecification.Windows(version);
             }
         }
 
         @JsonIgnore
-        VirtualMachineService.VirtualMachineSpecification toVirtualMachineSpecification();
+        VirtualMachineService.VirtualMachineSpecification toVirtualMachineSpecification(String password);
     }
 
     @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
     public interface CreateVirtualMachineResponseBody {
         @JsonTypeName("linux")
-        record Linux(UUID machineId, String hostname, String rootUsername, String password) implements CreateVirtualMachineResponseBody { }
+        record Linux(UUID machineId, String hostname, String rootUsername, String password, String publicAddress) implements CreateVirtualMachineResponseBody { }
         @JsonTypeName("windows")
         record Windows(UUID machineId) implements CreateVirtualMachineResponseBody { }
 
@@ -174,7 +164,7 @@ public class VirtualMachineResource {
         static CreateVirtualMachineResponseBody from(UUID machineId, VirtualMachineService.CreatedVirtualMachine createdVirtualMachine) {
             return switch (createdVirtualMachine) {
                 case VirtualMachineService.CreatedVirtualMachine.Linux linux ->
-                    new Linux(machineId, linux.hostname(), linux.rootUsername(), linux.password());
+                    new Linux(machineId, linux.hostname(), linux.rootUsername(), linux.password(), linux.publicAddress());
                 case VirtualMachineService.CreatedVirtualMachine.Windows windows ->
                     new Windows(machineId);
             };
@@ -190,7 +180,7 @@ public class VirtualMachineResource {
     public CreateVirtualMachineResponseBody createVirtualMachine(@Context SecurityContext securityContext, CreateVirtualMachineRequestBody body) throws NoSuchAlgorithmException {
         final String appUsername = securityContext.getUserPrincipal().getName();
         final UUID machineId = UUID.randomUUID();
-        final var spec = body.toVirtualMachineSpecification();
+        final var spec = body.toVirtualMachineSpecification("P@ssw0rdP@ssw0rd");
 
         if (VirtualMachineEntity.exists(machineId)) {
             throw HttpProblem.builder()
@@ -199,25 +189,25 @@ public class VirtualMachineResource {
                     .build();
         }
 
-        if (VirtualMachineEntity.count() >= maxGlobalVirtualMachines) {
+        if (VirtualMachineEntity.count() >= maxThresholdVirtualMachine.global()) {
             throw HttpProblem.builder()
                     .withTitle("Max virtual machines reached")
                     .withStatus(Response.Status.FORBIDDEN)
                     .build();
         }
 
-        if (securityContext.isUserInRole(Role.Name.ADVANCED) && VirtualMachineEntity.findByUsername(appUsername).size() >= maxVirtualMachinesWithAdvancedRole) {
+        if (securityContext.isUserInRole(Role.Name.ADVANCED) && VirtualMachineEntity.findByUsername(appUsername).size() >= maxThresholdVirtualMachine.byRole(Role.ADVANCED)) {
             throw HttpProblem.builder()
                     .withTitle("Max virtual machines per user reached")
-                    .withDetail("You have reached the maximum number '%s' of virtual machines for your role".formatted(maxVirtualMachinesWithAdvancedRole))
+                    .withDetail("You have reached the maximum number '%s' of virtual machines for your role".formatted(maxThresholdVirtualMachine.byRole(Role.ADVANCED)))
                     .withStatus(Response.Status.FORBIDDEN)
                     .build();
         }
 
-        if (securityContext.isUserInRole(Role.Name.BASIC) && VirtualMachineEntity.findByUsername(appUsername).size() >= maxBasicVirtualMachinesWithBasicRole) {
+        if (securityContext.isUserInRole(Role.Name.BASIC) && VirtualMachineEntity.findByUsername(appUsername).size() >= maxThresholdVirtualMachine.byRole(Role.BASIC)) {
             throw HttpProblem.builder()
                     .withTitle("Max virtual machines per user reached")
-                    .withDetail("You have reached the maximum number '%s' of virtual machines for your role".formatted(maxBasicVirtualMachinesWithBasicRole))
+                    .withDetail("You have reached the maximum number '%s' of virtual machines for your role".formatted(maxThresholdVirtualMachine.byRole(Role.BASIC)))
                     .withStatus(Response.Status.FORBIDDEN)
                     .build();
         }

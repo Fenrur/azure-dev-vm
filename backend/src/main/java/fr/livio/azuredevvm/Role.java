@@ -16,6 +16,15 @@ public enum Role {
         return role;
     }
 
+    public static Role fromString(String role) {
+        return switch (role) {
+            case Name.ADMIN -> ADMIN;
+            case Name.ADVANCED -> ADVANCED;
+            case Name.BASIC -> BASIC;
+            default -> throw new IllegalArgumentException("Unknown role: " + role);
+        };
+    }
+
     public static class Name {
 
         public static final String ADMIN = "admin";

@@ -1,11 +1,14 @@
 package fr.livio.azuredevvm.resource;
 
 import com.tietoevry.quarkus.resteasy.problem.HttpProblem;
+import fr.livio.azuredevvm.MaxThresholdVirtualMachine;
 import fr.livio.azuredevvm.Role;
 import fr.livio.azuredevvm.entity.UserEntity;
 import io.quarkus.logging.Log;
+import io.quarkus.security.runtime.QuarkusPrincipal;
 import io.smallrye.common.annotation.RunOnVirtualThread;
 import jakarta.annotation.security.RolesAllowed;
+import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.Context;
@@ -21,16 +24,37 @@ import java.util.Optional;
 @RunOnVirtualThread
 public class UserResource {
 
+    @Inject
+    MaxThresholdVirtualMachine maxThresholdVirtualMachine;
+
+    public record UserResponseRequest(String username, String role, int token, int maxVms) {
+    }
+
     @GET
     @RolesAllowed({Role.Name.ADMIN, Role.Name.ADVANCED, Role.Name.BASIC})
     @Path("/me")
-    @Produces(MediaType.TEXT_PLAIN)
+    @Produces(MediaType.APPLICATION_JSON)
     @ResponseStatus(200)
-    public String me(@Context SecurityContext securityContext) {
-        return securityContext.getUserPrincipal().getName();
+    public UserResponseRequest me(@Context SecurityContext securityContext) {
+        final UserEntity userEntity = UserEntity.findByUsername(securityContext.getUserPrincipal().getName());
+        final int maxVms;
+        if (securityContext.isUserInRole(Role.Name.ADMIN)) {
+            maxVms = maxThresholdVirtualMachine.byRole(Role.ADMIN);
+        }
+        else if (securityContext.isUserInRole(Role.Name.ADVANCED)) {
+            maxVms = maxThresholdVirtualMachine.byRole(Role.ADVANCED);
+        }
+        else if (securityContext.isUserInRole(Role.Name.BASIC)) {
+            maxVms = maxThresholdVirtualMachine.byRole(Role.BASIC);
+        }
+        else {
+            throw HttpProblem.builder().withStatus(Response.Status.INTERNAL_SERVER_ERROR).withTitle("Can't get max vms for your role").build();
+        }
+
+        return new UserResponseRequest(userEntity.username, userEntity.role, userEntity.token, maxVms);
     }
 
-    public record ListUsersResponseRequest(List<String> users) {
+    public record ListUsersResponseRequest(List<UserResponseRequest> users) {
     }
 
     @GET
@@ -42,7 +66,7 @@ public class UserResource {
                 UserEntity
                         .listAllUsers()
                         .stream()
-                        .map(user -> user.username)
+                        .map(user -> new UserResponseRequest(user.username, user.role, user.token, maxThresholdVirtualMachine.byRole(Role.fromString(user.role))))
                         .toList()
         );
     }
@@ -86,33 +110,4 @@ public class UserResource {
     }
 
     public record GetTokenResponseBody(int token) { }
-
-    @GET
-    @Path("/token")
-    @RolesAllowed({Role.Name.ADMIN, Role.Name.ADVANCED, Role.Name.BASIC})
-    @Produces(MediaType.APPLICATION_JSON)
-    @ResponseStatus(200)
-    public GetTokenResponseBody getToken(@Context SecurityContext securityContext, @QueryParam("username") Optional<String> username) {
-        if (securityContext.isUserInRole("admin") && username.isPresent()) {
-            final UserEntity user = UserEntity.findByUsername(username.get());
-            if (user == null) {
-                throw HttpProblem.builder()
-                        .withTitle("User not found")
-                        .withStatus(Response.Status.NOT_FOUND)
-                        .build();
-            }
-
-            return new GetTokenResponseBody(user.token);
-        }
-
-        final UserEntity user = UserEntity.findByUsername(securityContext.getUserPrincipal().getName());
-        if (user == null) {
-            throw HttpProblem.builder()
-                    .withTitle("User not found")
-                    .withStatus(Response.Status.NOT_FOUND)
-                    .build();
-        }
-
-        return new GetTokenResponseBody(user.token);
-    }
 }

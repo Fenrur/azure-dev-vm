@@ -217,14 +217,22 @@ public class VirtualMachineResource {
 
         if (VirtualMachineEntity.count() >= maxThresholdVirtualMachine.global()) {
             throw HttpProblem.builder()
+                    .withTitle("Max global virtual machines reached")
+                    .withStatus(Response.Status.FORBIDDEN)
+                    .build();
+        }
+
+        if (securityContext.isUserInRole(Role.Name.ADMIN) && VirtualMachineEntity.findByUsername(appUsername).size() >= maxThresholdVirtualMachine.byRole(Role.ADMIN)) {
+            throw HttpProblem.builder()
                     .withTitle("Max virtual machines reached")
+                    .withDetail("You have reached the maximum number '%s' of virtual machines for your role".formatted(maxThresholdVirtualMachine.byRole(Role.ADMIN)))
                     .withStatus(Response.Status.FORBIDDEN)
                     .build();
         }
 
         if (securityContext.isUserInRole(Role.Name.ADVANCED) && VirtualMachineEntity.findByUsername(appUsername).size() >= maxThresholdVirtualMachine.byRole(Role.ADVANCED)) {
             throw HttpProblem.builder()
-                    .withTitle("Max virtual machines per user reached")
+                    .withTitle("Max virtual machines reached")
                     .withDetail("You have reached the maximum number '%s' of virtual machines for your role".formatted(maxThresholdVirtualMachine.byRole(Role.ADVANCED)))
                     .withStatus(Response.Status.FORBIDDEN)
                     .build();
@@ -232,7 +240,7 @@ public class VirtualMachineResource {
 
         if (securityContext.isUserInRole(Role.Name.BASIC) && VirtualMachineEntity.findByUsername(appUsername).size() >= maxThresholdVirtualMachine.byRole(Role.BASIC)) {
             throw HttpProblem.builder()
-                    .withTitle("Max virtual machines per user reached")
+                    .withTitle("Max virtual machines reached")
                     .withDetail("You have reached the maximum number '%s' of virtual machines for your role".formatted(maxThresholdVirtualMachine.byRole(Role.BASIC)))
                     .withStatus(Response.Status.FORBIDDEN)
                     .build();
@@ -240,11 +248,17 @@ public class VirtualMachineResource {
 
         final UserEntity user = UserEntity.findByUsername(appUsername);
         if (user == null) {
-            throw HttpProblem.builder().withTitle("User not found").withStatus(Response.Status.NOT_FOUND).build();
+            throw HttpProblem.builder()
+                    .withTitle("User not found")
+                    .withStatus(Response.Status.NOT_FOUND)
+                    .build();
         }
 
         if (user.token <= 0) {
-            throw HttpProblem.builder().withTitle("Not enough tokens").withStatus(Response.Status.FORBIDDEN).build();
+            throw HttpProblem.builder()
+                    .withTitle("Not enough tokens")
+                    .withStatus(Response.Status.FORBIDDEN)
+                    .build();
         }
 
         user.token -= 1;
@@ -253,20 +267,23 @@ public class VirtualMachineResource {
         try {
             VirtualMachineEntity.put(mapper, machineId, user, spec, VirtualMachineState.CREATING);
         } catch (Exception e) {
-            throw HttpProblem.builder().withTitle("Not found user in db for creating").withStatus(Response.Status.NOT_FOUND).build();
+            throw HttpProblem.builder()
+                    .withTitle("Not found user in db for creating")
+                    .withStatus(Response.Status.NOT_FOUND)
+                    .build();
         }
 
         Thread.startVirtualThread(() -> {
             try {
-                userTransaction.begin(); // Début de la transaction
+                userTransaction.begin();
 
                 virtualMachineService.create(machineId, spec);
                 VirtualMachineEntity.updateState(machineId, VirtualMachineState.RUNNING);
 
-                userTransaction.commit(); // Commit de la transaction si tout se passe bien
+                userTransaction.commit();
             } catch (Exception e) {
                 try {
-                    userTransaction.rollback(); // Rollback en cas d'exception
+                    userTransaction.rollback();
                 } catch (Exception ex) {
                     Log.error("Transaction rollback failed", ex);
                 }

@@ -9,6 +9,9 @@ public class MaxThresholdVirtualMachine {
     @ConfigProperty(name = "azure.global.max-vms", defaultValue = "0")
     int maxGlobalVirtualMachines;
 
+    @ConfigProperty(name = "azure.global.max-vms.role.admin", defaultValue = "0")
+    int maxVirtualMachinesWithAdminRole;
+
     @ConfigProperty(name = "azure.global.max-vms.role.advanced", defaultValue = "0")
     int maxVirtualMachinesWithAdvancedRole;
 
@@ -17,7 +20,7 @@ public class MaxThresholdVirtualMachine {
 
     public int byRole(Role role) {
         return switch (role) {
-            case ADMIN -> maxGlobalVirtualMachines;
+            case ADMIN -> maxVirtualMachinesWithAdminRole;
             case ADVANCED -> maxVirtualMachinesWithAdvancedRole;
             case BASIC -> maxBasicVirtualMachinesWithBasicRole;
         };

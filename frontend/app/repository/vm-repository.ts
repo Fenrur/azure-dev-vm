@@ -12,3 +12,15 @@ export function getVirtualMachines(baseUrl: string, basicAuth: BasicAuth) {
 export function deleteVirtualMachine(baseUrl: string, vmId: string, basicAuth: BasicAuth) {
     return fetchDelete(baseUrl, `/api/vms/${vmId}`, undefined, basicAuth);
 }
+
+const VirtualMachineMaxThresholdResponse = z.object({
+    global: z.number().int(),
+    admin: z.number().int(),
+    advanced: z.number().int(),
+    basic: z.number().int()
+})
+export type VirtualMachineMaxThresholdResponse = z.infer<typeof VirtualMachineMaxThresholdResponse>;
+
+export function getVirtualMachineMaxThreshold(baseUrl: string) {
+    return fetchGetJsonResource(baseUrl, `/api/vms/max-threshold`, VirtualMachineMaxThresholdResponse);
+}

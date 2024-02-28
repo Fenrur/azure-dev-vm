@@ -1,6 +1,6 @@
 import {create} from 'zustand'
 import {devtools, persist} from 'zustand/middleware'
-import {Credential, Theme, User} from "@/app/types";
+import {Credential, Theme, User, VirtualMachineMaxThreshold} from "@/app/types";
 
 export interface CredentialState {
     credential: Credential | null,
@@ -58,3 +58,28 @@ export const useTheme = create<ThemeState>()(
         )
     )
 )
+
+export interface VirtualMachineMaxThresholdState {
+    maxThreshold: VirtualMachineMaxThreshold,
+    setMaxThreshold: (by: VirtualMachineMaxThreshold) => void
+}
+
+export const useVirtualMachineMaxThreshold = create<VirtualMachineMaxThresholdState>()(
+    devtools(
+        persist(
+            (set) => ({
+                maxThreshold: {
+                    global: 0,
+                    admin: 0,
+                    advanced: 0,
+                    basic: 0
+                },
+                setMaxThreshold: (by) => set({maxThreshold: by})
+            }),
+            {
+                name: "max-threshold-storage"
+            }
+        )
+    )
+)
+

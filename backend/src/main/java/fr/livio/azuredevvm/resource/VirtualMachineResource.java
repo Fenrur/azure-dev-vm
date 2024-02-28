@@ -52,13 +52,19 @@ public class VirtualMachineResource {
     public void putVirtualMachine(UpdateVirtualMachineRequestBody body) {
         final UserEntity user = UserEntity.findByUsername(body.username);
         if (user == null) {
-            throw HttpProblem.builder().withTitle("User not found").withStatus(Response.Status.NOT_FOUND).build();
+            throw HttpProblem.builder()
+                    .withTitle("User not found")
+                    .withStatus(Response.Status.NOT_FOUND)
+                    .build();
         }
 
         try {
             VirtualMachineEntity.put(mapper, body.machineId, user, null, VirtualMachineState.CREATING);
         } catch (Exception e) {
-            throw HttpProblem.builder().withTitle("Virtual machine not found").withStatus(Response.Status.NOT_FOUND).build();
+            throw HttpProblem.builder()
+                    .withTitle("Virtual machine not found")
+                    .withStatus(Response.Status.NOT_FOUND)
+                    .build();
         }
     }
 
@@ -112,11 +118,17 @@ public class VirtualMachineResource {
         if (securityContext.isUserInRole(Role.Name.ADMIN)) {
             final VirtualMachineEntity virtualMachine = VirtualMachineEntity.getByMachineId(machineId);
             if (virtualMachine == null) {
-                throw HttpProblem.builder().withTitle("Not found machine in db").withStatus(Response.Status.NOT_FOUND).build();
+                throw HttpProblem.builder()
+                        .withTitle("Not found machine in db")
+                        .withStatus(Response.Status.NOT_FOUND)
+                        .build();
             }
 
             if (virtualMachine.state != VirtualMachineState.RUNNING) {
-                throw HttpProblem.builder().withTitle("Machine not running").withStatus(Response.Status.FORBIDDEN).build();
+                throw HttpProblem.builder()
+                        .withTitle("Machine not running")
+                        .withStatus(Response.Status.FORBIDDEN)
+                        .build();
             }
 
             VirtualMachineEntity.updateState(machineId, VirtualMachineState.DELETING);
@@ -126,7 +138,10 @@ public class VirtualMachineResource {
                     userTransaction.begin();
                     virtualMachineService.delete(machineId);
                     if (VirtualMachineEntity.deleteByMachineId(machineId) == 0) {
-                        throw HttpProblem.builder().withTitle("Not found machine in db").withStatus(Response.Status.NOT_FOUND).build();
+                        throw HttpProblem.builder()
+                                .withTitle("Not found machine in db")
+                                .withStatus(Response.Status.NOT_FOUND)
+                                .build();
                     }
                     userTransaction.commit();
                 } catch (Exception ignored) {
@@ -136,19 +151,31 @@ public class VirtualMachineResource {
             final UserEntity user = UserEntity.findByUsername(appUsername);
 
             if (user == null) {
-                throw HttpProblem.builder().withTitle("User not found").withStatus(Response.Status.NOT_FOUND).build();
+                throw HttpProblem.builder()
+                        .withTitle("User not found")
+                        .withStatus(Response.Status.NOT_FOUND)
+                        .build();
             }
 
             final VirtualMachineEntity virtualMachine = VirtualMachineEntity.getByMachineId(machineId);
             if (virtualMachine == null) {
-                throw HttpProblem.builder().withTitle("Not found machine in db").withStatus(Response.Status.NOT_FOUND).build();
+                throw HttpProblem.builder()
+                        .withTitle("Not found machine in db")
+                        .withStatus(Response.Status.NOT_FOUND)
+                        .build();
             }
             if (!virtualMachine.owner.username.equals(appUsername)) {
-                throw HttpProblem.builder().withTitle("Not found machine in db").withStatus(Response.Status.NOT_FOUND).build();
+                throw HttpProblem.builder()
+                        .withTitle("Not found machine in db")
+                        .withStatus(Response.Status.NOT_FOUND)
+                        .build();
             }
 
             if (virtualMachine.state != VirtualMachineState.RUNNING) {
-                throw HttpProblem.builder().withTitle("Machine not running").withStatus(Response.Status.FORBIDDEN).build();
+                throw HttpProblem.builder()
+                        .withTitle("Machine not running")
+                        .withStatus(Response.Status.FORBIDDEN)
+                        .build();
             }
 
             VirtualMachineEntity.updateState(machineId, VirtualMachineState.DELETING);
@@ -158,7 +185,10 @@ public class VirtualMachineResource {
                     userTransaction.begin();
                     virtualMachineService.delete(machineId);
                     if (VirtualMachineEntity.deleteByMachineId(machineId) == 0) {
-                        throw HttpProblem.builder().withTitle("Not found machine in db").withStatus(Response.Status.NOT_FOUND).build();
+                        throw HttpProblem.builder()
+                                .withTitle("Not found machine in db")
+                                .withStatus(Response.Status.NOT_FOUND)
+                                .build();
                     }
                     userTransaction.commit();
                 } catch (Exception ignored) {

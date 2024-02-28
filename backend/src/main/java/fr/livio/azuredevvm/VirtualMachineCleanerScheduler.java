@@ -2,11 +2,11 @@ package fr.livio.azuredevvm;
 
 import fr.livio.azuredevvm.entity.VirtualMachineEntity;
 import io.quarkus.logging.Log;
-import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.scheduler.Scheduled;
 import jakarta.inject.Inject;
-import jakarta.transaction.*;
-import org.eclipse.microprofile.context.ManagedExecutor;
+import jakarta.transaction.SystemException;
+import jakarta.transaction.Transactional;
+import jakarta.transaction.UserTransaction;
 
 import java.time.OffsetDateTime;
 import java.util.Map;

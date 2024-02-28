@@ -11,11 +11,6 @@ public enum Role {
         this.role = role;
     }
 
-    @Override
-    public String toString() {
-        return role;
-    }
-
     public static Role fromString(String role) {
         return switch (role) {
             case Name.ADMIN -> ADMIN;
@@ -23,6 +18,11 @@ public enum Role {
             case Name.BASIC -> BASIC;
             default -> throw new IllegalArgumentException("Unknown role: " + role);
         };
+    }
+
+    @Override
+    public String toString() {
+        return role;
     }
 
     public static class Name {

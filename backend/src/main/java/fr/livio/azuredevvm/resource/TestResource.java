@@ -4,12 +4,8 @@ import com.azure.resourcemanager.AzureResourceManager;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import fr.livio.azuredevvm.VirtualMachineService;
-
-import fr.livio.azuredevvm.VirtualMachineState;
-import fr.livio.azuredevvm.entity.UserEntity;
 import fr.livio.azuredevvm.entity.VirtualMachineEntity;
 import io.smallrye.common.annotation.RunOnVirtualThread;
-import io.vertx.core.json.JsonObject;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 import jakarta.ws.rs.GET;
@@ -21,24 +17,11 @@ import org.jboss.resteasy.reactive.ResponseStatus;
 
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.UUID;
 
 @RunOnVirtualThread
 @Path("/api")
 public class TestResource {
-
-    @Inject
-    AzureResourceManager arm;
-
-    @Inject
-    VirtualMachineService virtualMachineService;
-
-    public record TestResponseBody(String firstName, String lastName) {
-
-    }
 
     public static final List<String> FIRST_NAMES = List.of(
             "Emma",
@@ -52,7 +35,6 @@ public class TestResource {
             "Zoé",
             "Raphaël"
     );
-
     public static final List<String> LAST_NAMES = List.of(
             "Martin",
             "Bernard",
@@ -65,7 +47,12 @@ public class TestResource {
             "Leroy",
             "Moreau"
     );
-
+    @Inject
+    AzureResourceManager arm;
+    @Inject
+    VirtualMachineService virtualMachineService;
+    @Inject
+    ObjectMapper mapper;
 
     @GET
     @Produces(MediaType.APPLICATION_JSON)
@@ -78,9 +65,6 @@ public class TestResource {
         String lastName = LAST_NAMES.get(random.nextInt(LAST_NAMES.size()));
         return new TestResponseBody(firstName, lastName);
     }
-
-    @Inject
-    ObjectMapper mapper;
 
     @POST
     @ResponseStatus(200)
@@ -101,5 +85,9 @@ public class TestResource {
     @Produces(MediaType.APPLICATION_JSON)
     public JsonNode n(JsonNode n) {
         return n;
+    }
+
+    public record TestResponseBody(String firstName, String lastName) {
+
     }
 }

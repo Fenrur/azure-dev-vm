@@ -1,12 +1,10 @@
 package fr.livio.azuredevvm.resource;
 
-import io.quarkus.elytron.security.common.BcryptUtil;
 import jakarta.annotation.security.PermitAll;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
-import org.wildfly.security.password.interfaces.BCryptPassword;
 
 @Path("/api/public")
 public class PublicResource {

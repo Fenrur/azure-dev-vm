@@ -2,25 +2,23 @@ package fr.livio.azuredevvm;
 
 import jakarta.ws.rs.core.MultivaluedHashMap;
 
-import java.util.HashMap;
-import java.util.Map;
 import java.util.function.BiConsumer;
 import java.util.function.BinaryOperator;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collector;
-import java.util.stream.Collectors;
 
 public class CollectorUtils {
 
     /**
      * Returns a collector that accumulates elements into a {@code MultivaluedHashMap} by mapping the stream
      * elements to keys and values using the provided functions.
-     * @param keyMapper a function to map the stream elements to keys
+     *
+     * @param keyMapper   a function to map the stream elements to keys
      * @param valueMapper a function to map the stream elements to values
-     * @param <T> the type of the input elements of the stream
-     * @param <K> the type of keys maintained by the resulting {@code MultivaluedHashMap}
-     * @param <U> the type of mapped values in the resulting {@code MultivaluedHashMap}
+     * @param <T>         the type of the input elements of the stream
+     * @param <K>         the type of keys maintained by the resulting {@code MultivaluedHashMap}
+     * @param <U>         the type of mapped values in the resulting {@code MultivaluedHashMap}
      * @return a {@code Collector} that collects elements into a {@code MultivaluedHashMap<K, U>}
      */
     public static <T, K, U> Collector<T, ?, MultivaluedHashMap<K, U>> toMultivaluedMap(

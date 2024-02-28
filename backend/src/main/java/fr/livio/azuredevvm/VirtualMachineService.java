@@ -49,45 +49,10 @@ public class VirtualMachineService {
                 .collect(Collectors.toUnmodifiableMap(Map.Entry::getKey, Map.Entry::getValue));
     }
 
-    public static class VirtualMachineServiceException extends RuntimeException {
-        public VirtualMachineServiceException(String message) {
-            super(message);
-        }
-    }
-
-    @RegisterForReflection
-    @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
-    public sealed interface VirtualMachineSpecification {
-        @JsonTypeName("linux")
-        @RegisterForReflection
-        public record Linux(String hostname, String rootUsername, String password, AzureImage azureImage) implements VirtualMachineSpecification { }
-        @JsonTypeName("windows")
-        @RegisterForReflection
-        public record Windows(String version, AzureImage azureImage) implements VirtualMachineSpecification { }
-
-        AzureImage azureImage();
-    }
-
-    public record AzureImage(String publisher, String offer, String sku) { }
-
-    @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
-    public sealed interface CreatedVirtualMachine {
-        @JsonTypeName("linux")
-        public record Linux(String hostname, String rootUsername, String password, String publicAddress) implements CreatedVirtualMachine { }
-        @JsonTypeName("windows")
-        public record Windows() implements CreatedVirtualMachine { }
-    }
-
-    public static class ExistingVirtualMachineException extends Exception {
-        public ExistingVirtualMachineException() {
-            super("Virtual machine already exists");
-        }
-    }
-
     public VirtualMachineState getState(UUID machineId) {
         if (arm
-                .resourceGroups()
-                .getByName(PREFIX_RESOURCE_GROUP_NAME + machineId.toString()) == null) {
+                    .resourceGroups()
+                    .getByName(PREFIX_RESOURCE_GROUP_NAME + machineId.toString()) == null) {
 
             return VirtualMachineState.DELETED;
         }
@@ -265,5 +230,49 @@ public class VirtualMachineService {
         }
 
         return resourceGroup;
+    }
+
+    @RegisterForReflection
+    @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
+    public sealed interface VirtualMachineSpecification {
+        AzureImage azureImage();
+
+        @JsonTypeName("linux")
+        @RegisterForReflection
+        record Linux(String hostname, String rootUsername, String password,
+                     AzureImage azureImage) implements VirtualMachineSpecification {
+        }
+
+        @JsonTypeName("windows")
+        @RegisterForReflection
+        record Windows(String version, AzureImage azureImage) implements VirtualMachineSpecification {
+        }
+    }
+
+    @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
+    public sealed interface CreatedVirtualMachine {
+        @JsonTypeName("linux")
+        record Linux(String hostname, String rootUsername, String password,
+                     String publicAddress) implements CreatedVirtualMachine {
+        }
+
+        @JsonTypeName("windows")
+        record Windows() implements CreatedVirtualMachine {
+        }
+    }
+
+    public static class VirtualMachineServiceException extends RuntimeException {
+        public VirtualMachineServiceException(String message) {
+            super(message);
+        }
+    }
+
+    public record AzureImage(String publisher, String offer, String sku) {
+    }
+
+    public static class ExistingVirtualMachineException extends Exception {
+        public ExistingVirtualMachineException() {
+            super("Virtual machine already exists");
+        }
     }
 }

@@ -5,7 +5,6 @@ import fr.livio.azuredevvm.MaxThresholdVirtualMachine;
 import fr.livio.azuredevvm.Role;
 import fr.livio.azuredevvm.entity.UserEntity;
 import io.quarkus.logging.Log;
-import io.quarkus.security.runtime.QuarkusPrincipal;
 import io.smallrye.common.annotation.RunOnVirtualThread;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
@@ -18,7 +17,6 @@ import jakarta.ws.rs.core.SecurityContext;
 import org.jboss.resteasy.reactive.ResponseStatus;
 
 import java.util.List;
-import java.util.Optional;
 
 @Path("/api/users")
 @RunOnVirtualThread
@@ -26,9 +24,6 @@ public class UserResource {
 
     @Inject
     MaxThresholdVirtualMachine maxThresholdVirtualMachine;
-
-    public record UserResponseRequest(String username, String role, int token, int maxVms) {
-    }
 
     @GET
     @RolesAllowed({Role.Name.ADMIN, Role.Name.ADVANCED, Role.Name.BASIC})
@@ -40,21 +35,15 @@ public class UserResource {
         final int maxVms;
         if (securityContext.isUserInRole(Role.Name.ADMIN)) {
             maxVms = maxThresholdVirtualMachine.byRole(Role.ADMIN);
-        }
-        else if (securityContext.isUserInRole(Role.Name.ADVANCED)) {
+        } else if (securityContext.isUserInRole(Role.Name.ADVANCED)) {
             maxVms = maxThresholdVirtualMachine.byRole(Role.ADVANCED);
-        }
-        else if (securityContext.isUserInRole(Role.Name.BASIC)) {
+        } else if (securityContext.isUserInRole(Role.Name.BASIC)) {
             maxVms = maxThresholdVirtualMachine.byRole(Role.BASIC);
-        }
-        else {
+        } else {
             throw HttpProblem.builder().withStatus(Response.Status.INTERNAL_SERVER_ERROR).withTitle("Can't get max vms for your role").build();
         }
 
         return new UserResponseRequest(userEntity.username, userEntity.role, userEntity.token, maxVms);
-    }
-
-    public record ListUsersResponseRequest(List<UserResponseRequest> users) {
     }
 
     @GET
@@ -71,9 +60,6 @@ public class UserResource {
         );
     }
 
-    public record CreateUserRequestBody(String username, String password, String role, int token) {
-    }
-
     @POST
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
@@ -87,8 +73,6 @@ public class UserResource {
             UserEntity.add(body.username(), body.password(), body.role(), body.token());
         }
     }
-
-    public record SetTokenBodyRequest(String username, int token) { }
 
     @PUT
     @Path("/token")
@@ -109,5 +93,18 @@ public class UserResource {
         }
     }
 
-    public record GetTokenResponseBody(int token) { }
+    public record UserResponseRequest(String username, String role, int token, int maxVms) {
+    }
+
+    public record ListUsersResponseRequest(List<UserResponseRequest> users) {
+    }
+
+    public record CreateUserRequestBody(String username, String password, String role, int token) {
+    }
+
+    public record SetTokenBodyRequest(String username, int token) {
+    }
+
+    public record GetTokenResponseBody(int token) {
+    }
 }

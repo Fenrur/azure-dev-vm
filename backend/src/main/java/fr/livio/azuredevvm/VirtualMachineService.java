@@ -2,6 +2,7 @@ package fr.livio.azuredevvm;
 
 import com.azure.core.management.Region;
 import com.azure.resourcemanager.AzureResourceManager;
+import com.azure.resourcemanager.compute.models.PowerState;
 import com.azure.resourcemanager.compute.models.VirtualMachine;
 import com.azure.resourcemanager.network.models.Network;
 import com.azure.resourcemanager.network.models.NetworkInterface;
@@ -10,6 +11,7 @@ import com.azure.resourcemanager.resources.models.ResourceGroup;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.annotation.JsonTypeName;
 import fr.livio.azuredevvm.entity.VirtualMachineEntity;
+import io.quarkus.runtime.annotations.RegisterForReflection;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 
@@ -53,13 +55,20 @@ public class VirtualMachineService {
         }
     }
 
+    @RegisterForReflection
     @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
     public sealed interface VirtualMachineSpecification {
         @JsonTypeName("linux")
-        public record Linux(String hostname, String rootUsername, String password) implements VirtualMachineSpecification { }
+        @RegisterForReflection
+        public record Linux(String hostname, String rootUsername, String password, AzureImage azureImage) implements VirtualMachineSpecification { }
         @JsonTypeName("windows")
-        public record Windows(String version) implements VirtualMachineSpecification { }
+        @RegisterForReflection
+        public record Windows(String version, AzureImage azureImage) implements VirtualMachineSpecification { }
+
+        AzureImage azureImage();
     }
+
+    public record AzureImage(String publisher, String offer, String sku) { }
 
     @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
     public sealed interface CreatedVirtualMachine {
@@ -75,6 +84,29 @@ public class VirtualMachineService {
         }
     }
 
+    public VirtualMachineState getState(UUID machineId) {
+        if (arm
+                .resourceGroups()
+                .getByName(PREFIX_RESOURCE_GROUP_NAME + machineId.toString()) == null) {
+
+            return VirtualMachineState.DELETED;
+        }
+
+        final Optional<VirtualMachine> virtualMachine = getVirtualMachine(machineId);
+        if (virtualMachine.isEmpty()) return VirtualMachineState.DELETED;
+
+        final VirtualMachine vm = virtualMachine.get();
+        final PowerState powerState = vm.powerState();
+        if (powerState.equals(PowerState.RUNNING)) {
+            return VirtualMachineState.RUNNING;
+        } else if (powerState.equals(PowerState.STARTING)) {
+            return VirtualMachineState.CREATING;
+        } else if (powerState.equals(PowerState.DEALLOCATING) || powerState.equals(PowerState.DEALLOCATED) || powerState.equals(PowerState.STOPPING) || powerState.equals(PowerState.STOPPED)) {
+            return VirtualMachineState.DELETING;
+        } else {
+            return VirtualMachineState.DELETED;
+        }
+    }
 
     public CreatedVirtualMachine create(UUID machineId, VirtualMachineSpecification spec) throws ExistingVirtualMachineException {
         applyResourceGroup(machineId);

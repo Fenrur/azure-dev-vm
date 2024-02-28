@@ -3,20 +3,19 @@ package fr.livio.azuredevvm.resource;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.annotation.JsonTypeName;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tietoevry.quarkus.resteasy.problem.HttpProblem;
-import fr.livio.azuredevvm.CollectorUtils;
-import fr.livio.azuredevvm.MaxThresholdVirtualMachine;
-import fr.livio.azuredevvm.Role;
-import fr.livio.azuredevvm.VirtualMachineService;
+import fr.livio.azuredevvm.*;
 import fr.livio.azuredevvm.entity.UserEntity;
 import fr.livio.azuredevvm.entity.VirtualMachineEntity;
+import io.quarkus.logging.Log;
 import io.smallrye.common.annotation.RunOnVirtualThread;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
+import jakarta.transaction.UserTransaction;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.*;
-import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.resteasy.reactive.ResponseStatus;
 
 import java.io.IOException;
@@ -35,6 +34,12 @@ public class VirtualMachineResource {
     @Inject
     MaxThresholdVirtualMachine maxThresholdVirtualMachine;
 
+    @Inject
+    UserTransaction userTransaction;
+
+    @Inject
+    ObjectMapper mapper;
+
     public record UpdateVirtualMachineRequestBody(UUID machineId, String username) {
     }
 
@@ -51,43 +56,49 @@ public class VirtualMachineResource {
         }
 
         try {
-            VirtualMachineEntity.put(body.machineId, user);
+            VirtualMachineEntity.put(mapper, body.machineId, user, null, VirtualMachineState.CREATING);
         } catch (Exception e) {
             throw HttpProblem.builder().withTitle("Virtual machine not found").withStatus(Response.Status.NOT_FOUND).build();
         }
     }
 
-    public record VirtualMachinesByUserResponseBody(Map<String, List<UUID>> virtualMachines) {
+    public record VirtualMachinesByUserValue(UUID machineId, VirtualMachineService.VirtualMachineSpecification spec, VirtualMachineState state) {
+    }
+
+    public record VirtualMachinesByUserResponseBody(Map<String, List<VirtualMachinesByUserValue>> virtualMachines) {
     }
 
     @GET
     @RolesAllowed({Role.Name.ADMIN, Role.Name.ADVANCED, Role.Name.BASIC})
     @Produces(MediaType.APPLICATION_JSON)
     @ResponseStatus(200)
+    @Transactional
     public VirtualMachinesByUserResponseBody getVirtualMachinesByUser(@Context SecurityContext securityContext) throws IOException {
         final String appUsername = securityContext.getUserPrincipal().getName();
 
         if (securityContext.isUserInRole(Role.Name.ADMIN)) {
-            return new VirtualMachinesByUserResponseBody(
-                    VirtualMachineEntity
-                            .listAllVirtualMachines()
-                            .stream()
-                            .collect(CollectorUtils.toMultivaluedMap(
-                                    virtualMachine -> virtualMachine.owner.username,
-                                    virtualMachine -> virtualMachine.machineId
-                            ))
-            );
+            final MultivaluedHashMap<String, VirtualMachinesByUserValue> collect = VirtualMachineEntity
+                    .listAllVirtualMachines()
+                    .stream()
+                    .collect(CollectorUtils.toMultivaluedMap(
+                            virtualMachine -> virtualMachine.owner.username,
+                            virtualMachine -> new VirtualMachinesByUserValue(virtualMachine.machineId, virtualMachine.parseSpecification(mapper), virtualMachine.state)
+                            )
+                    );
+
+            return new VirtualMachinesByUserResponseBody(collect);
         }
 
-        return new VirtualMachinesByUserResponseBody(
-                VirtualMachineEntity
-                        .findByUsername(appUsername)
-                        .stream()
-                        .collect(CollectorUtils.toMultivaluedMap(
+        final MultivaluedHashMap<String, VirtualMachinesByUserValue> collect = VirtualMachineEntity
+                .findByUsername(appUsername)
+                .stream()
+                .collect(CollectorUtils.toMultivaluedMap(
                                 virtualMachine -> virtualMachine.owner.username,
-                                virtualMachine -> virtualMachine.machineId
-                        ))
-        );
+                                virtualMachine -> new VirtualMachinesByUserValue(virtualMachine.machineId, virtualMachine.parseSpecification(mapper), virtualMachine.state)
+                        )
+                );
+
+        return new VirtualMachinesByUserResponseBody(collect);
     }
 
     @DELETE
@@ -99,15 +110,28 @@ public class VirtualMachineResource {
         final String appUsername = securityContext.getUserPrincipal().getName();
 
         if (securityContext.isUserInRole(Role.Name.ADMIN)) {
-            if (VirtualMachineEntity.deleteByMachineId(machineId) == 0) {
+            final VirtualMachineEntity virtualMachine = VirtualMachineEntity.getByMachineId(machineId);
+            if (virtualMachine == null) {
                 throw HttpProblem.builder().withTitle("Not found machine in db").withStatus(Response.Status.NOT_FOUND).build();
             }
 
-            try {
-                virtualMachineService.delete(machineId);
-            } catch (Exception e) {
-                throw HttpProblem.builder().withTitle("Not found machine in azure").withStatus(Response.Status.NOT_FOUND).build();
+            if (virtualMachine.state != VirtualMachineState.RUNNING) {
+                throw HttpProblem.builder().withTitle("Machine not running").withStatus(Response.Status.FORBIDDEN).build();
             }
+
+            VirtualMachineEntity.updateState(machineId, VirtualMachineState.DELETING);
+
+            Thread.startVirtualThread(() -> {
+                try {
+                    userTransaction.begin();
+                    virtualMachineService.delete(machineId);
+                    if (VirtualMachineEntity.deleteByMachineId(machineId) == 0) {
+                        throw HttpProblem.builder().withTitle("Not found machine in db").withStatus(Response.Status.NOT_FOUND).build();
+                    }
+                    userTransaction.commit();
+                } catch (Exception ignored) {
+                }
+            });
         } else {
             final UserEntity user = UserEntity.findByUsername(appUsername);
 
@@ -115,17 +139,32 @@ public class VirtualMachineResource {
                 throw HttpProblem.builder().withTitle("User not found").withStatus(Response.Status.NOT_FOUND).build();
             }
 
-            if (VirtualMachineEntity.deleteFromUser(machineId, user) == 0) {
+            final VirtualMachineEntity virtualMachine = VirtualMachineEntity.getByMachineId(machineId);
+            if (virtualMachine == null) {
+                throw HttpProblem.builder().withTitle("Not found machine in db").withStatus(Response.Status.NOT_FOUND).build();
+            }
+            if (!virtualMachine.owner.username.equals(appUsername)) {
                 throw HttpProblem.builder().withTitle("Not found machine in db").withStatus(Response.Status.NOT_FOUND).build();
             }
 
-            try {
-                virtualMachineService.delete(machineId);
-            } catch (Exception e) {
-                throw HttpProblem.builder().withTitle("Not found machine in azure").withStatus(Response.Status.NOT_FOUND).build();
+            if (virtualMachine.state != VirtualMachineState.RUNNING) {
+                throw HttpProblem.builder().withTitle("Machine not running").withStatus(Response.Status.FORBIDDEN).build();
             }
-        }
 
+            VirtualMachineEntity.updateState(machineId, VirtualMachineState.DELETING);
+
+            Thread.startVirtualThread(() -> {
+                try {
+                    userTransaction.begin();
+                    virtualMachineService.delete(machineId);
+                    if (VirtualMachineEntity.deleteByMachineId(machineId) == 0) {
+                        throw HttpProblem.builder().withTitle("Not found machine in db").withStatus(Response.Status.NOT_FOUND).build();
+                    }
+                    userTransaction.commit();
+                } catch (Exception ignored) {
+                }
+            });
+        }
     }
 
     @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
@@ -133,46 +172,33 @@ public class VirtualMachineResource {
 
         @JsonTypeName("linux")
         record Linux(String hostname,
-                     String rootUsername) implements CreateVirtualMachineRequestBody {
+                     String rootUsername, VirtualMachineService.AzureImage azureImage) implements CreateVirtualMachineRequestBody {
             @Override
             public VirtualMachineService.VirtualMachineSpecification.Linux toVirtualMachineSpecification(String password) {
-                return new VirtualMachineService.VirtualMachineSpecification.Linux(hostname, rootUsername, password);
+                return new VirtualMachineService.VirtualMachineSpecification.Linux(hostname, rootUsername, password, azureImage);
             }
         }
 
         @JsonTypeName("windows")
-        record Windows(String version) implements CreateVirtualMachineRequestBody {
+        record Windows(String version, VirtualMachineService.AzureImage azureImage) implements CreateVirtualMachineRequestBody {
             @Override
             public VirtualMachineService.VirtualMachineSpecification.Windows toVirtualMachineSpecification(String password) {
-                return new VirtualMachineService.VirtualMachineSpecification.Windows(version);
+                return new VirtualMachineService.VirtualMachineSpecification.Windows(version, azureImage);
             }
         }
+
+        VirtualMachineService.AzureImage azureImage();
 
         @JsonIgnore
         VirtualMachineService.VirtualMachineSpecification toVirtualMachineSpecification(String password);
     }
 
-    @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
-    public interface CreateVirtualMachineResponseBody {
-        @JsonTypeName("linux")
-        record Linux(UUID machineId, String hostname, String rootUsername, String password, String publicAddress) implements CreateVirtualMachineResponseBody { }
-        @JsonTypeName("windows")
-        record Windows(UUID machineId) implements CreateVirtualMachineResponseBody { }
+    public record CreateVirtualMachineResponseBody(UUID machineId) {
 
-        UUID machineId();
-
-        static CreateVirtualMachineResponseBody from(UUID machineId, VirtualMachineService.CreatedVirtualMachine createdVirtualMachine) {
-            return switch (createdVirtualMachine) {
-                case VirtualMachineService.CreatedVirtualMachine.Linux linux ->
-                    new Linux(machineId, linux.hostname(), linux.rootUsername(), linux.password(), linux.publicAddress());
-                case VirtualMachineService.CreatedVirtualMachine.Windows windows ->
-                    new Windows(machineId);
-            };
-        }
     }
 
     @POST
-    @RolesAllowed({Role.Name.ADVANCED, Role.Name.BASIC})
+    @RolesAllowed({Role.Name.ADMIN, Role.Name.ADVANCED, Role.Name.BASIC})
     @Produces(MediaType.APPLICATION_JSON)
     @Consumes(MediaType.APPLICATION_JSON)
     @ResponseStatus(201)
@@ -217,29 +243,53 @@ public class VirtualMachineResource {
             throw HttpProblem.builder().withTitle("User not found").withStatus(Response.Status.NOT_FOUND).build();
         }
 
-        user.token -= 1;
-
-        if (user.token < 0) {
+        if (user.token <= 0) {
             throw HttpProblem.builder().withTitle("Not enough tokens").withStatus(Response.Status.FORBIDDEN).build();
         }
 
+        user.token -= 1;
         user.persistAndFlush();
 
         try {
-            final var createdVirtualMachine = virtualMachineService.create(machineId, spec);
-
-            try {
-                VirtualMachineEntity.put(machineId, user);
-            } catch (Exception e) {
-                throw HttpProblem.builder().withTitle("Not found user in db for creating").withStatus(Response.Status.NOT_FOUND).build();
-            }
-
-            return CreateVirtualMachineResponseBody.from(machineId, createdVirtualMachine);
-        } catch (VirtualMachineService.ExistingVirtualMachineException e) {
-            throw HttpProblem.builder()
-                    .withTitle("Virtual machine already exists")
-                    .withStatus(Response.Status.CONFLICT)
-                    .build();
+            VirtualMachineEntity.put(mapper, machineId, user, spec, VirtualMachineState.CREATING);
+        } catch (Exception e) {
+            throw HttpProblem.builder().withTitle("Not found user in db for creating").withStatus(Response.Status.NOT_FOUND).build();
         }
+
+        Thread.startVirtualThread(() -> {
+            try {
+                userTransaction.begin(); // Début de la transaction
+
+                virtualMachineService.create(machineId, spec);
+                VirtualMachineEntity.updateState(machineId, VirtualMachineState.RUNNING);
+
+                userTransaction.commit(); // Commit de la transaction si tout se passe bien
+            } catch (Exception e) {
+                try {
+                    userTransaction.rollback(); // Rollback en cas d'exception
+                } catch (Exception ex) {
+                    Log.error("Transaction rollback failed", ex);
+                }
+                Log.error("Error during virtual machine creation", e);
+            }
+        });
+
+        return new CreateVirtualMachineResponseBody(machineId);
+    }
+
+    public record MaxThresholdResponseBody(int global, int admin, int advanced, int basic) {
+    }
+
+    @GET
+    @Path("/max-threshold")
+    @Produces(MediaType.APPLICATION_JSON)
+    @ResponseStatus(200)
+    public MaxThresholdResponseBody getMaxThreshold() {
+        return new MaxThresholdResponseBody(
+                maxThresholdVirtualMachine.global(),
+                maxThresholdVirtualMachine.byRole(Role.ADMIN),
+                maxThresholdVirtualMachine.byRole(Role.ADVANCED),
+                maxThresholdVirtualMachine.byRole(Role.BASIC)
+        );
     }
 }

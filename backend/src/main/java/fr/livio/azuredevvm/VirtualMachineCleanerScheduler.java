@@ -5,7 +5,7 @@ import io.quarkus.logging.Log;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.scheduler.Scheduled;
 import jakarta.inject.Inject;
-import jakarta.transaction.Transactional;
+import jakarta.transaction.*;
 import org.eclipse.microprofile.context.ManagedExecutor;
 
 import java.time.OffsetDateTime;
@@ -18,23 +18,31 @@ public class VirtualMachineCleanerScheduler {
     VirtualMachineService virtualMachineService;
 
     @Inject
-    ManagedExecutor managedExecutor;
+    UserTransaction userTransaction;
 
     @Scheduled(every = "1m")
+    @Transactional
     void clean() {
         Log.info("\uD83E\uDDF9 Cleaning virtual machines");
         for (Map.Entry<UUID, OffsetDateTime> entry : virtualMachineService.getCreatedDateTimeByMachineId().entrySet()) {
             final UUID machineId = entry.getKey();
             final OffsetDateTime timeCreated = entry.getValue();
             if (OffsetDateTime.now().isAfter(timeCreated.plusMinutes(3))) {
-                managedExecutor.runAsync(() -> {
+                Thread.startVirtualThread(() -> {
                     try {
+                        userTransaction.begin();
                         virtualMachineService.delete(machineId);
                         VirtualMachineEntity.deleteByMachineId(machineId);
 
                         Log.info("\uD83E\uDDF9 Virtual machine " + machineId + " deleted");
-                    } catch (VirtualMachineService.VirtualMachineServiceException e) {
+                        userTransaction.commit();
+                    } catch (Exception e) {
                         Log.error("\uD83D\uDEAB Failed to delete virtual machine " + machineId, e);
+                        try {
+                            userTransaction.rollback();
+                        } catch (SystemException systemException) {
+                            Log.error("\uD83D\uDEAB Failed to rollback transaction", systemException);
+                        }
                     }
                 });
             }

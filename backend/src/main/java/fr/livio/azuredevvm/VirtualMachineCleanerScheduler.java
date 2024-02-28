@@ -27,7 +27,7 @@ public class VirtualMachineCleanerScheduler {
         for (Map.Entry<UUID, OffsetDateTime> entry : virtualMachineService.getCreatedDateTimeByMachineId().entrySet()) {
             final UUID machineId = entry.getKey();
             final OffsetDateTime timeCreated = entry.getValue();
-            if (OffsetDateTime.now().isAfter(timeCreated.plusMinutes(3))) {
+            if (OffsetDateTime.now().isAfter(timeCreated.plusMinutes(10)) && VirtualMachineEntity.getByMachineId(machineId).state == VirtualMachineState.RUNNING) {
                 Thread.startVirtualThread(() -> {
                     try {
                         userTransaction.begin();

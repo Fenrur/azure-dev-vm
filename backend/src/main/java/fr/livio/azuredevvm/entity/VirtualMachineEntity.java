@@ -3,6 +3,7 @@ package fr.livio.azuredevvm.entity;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import fr.livio.azuredevvm.VirtualMachineInformation;
 import fr.livio.azuredevvm.VirtualMachineService;
 import fr.livio.azuredevvm.VirtualMachineState;
 import io.hypersistence.utils.hibernate.type.json.JsonType;
@@ -26,16 +27,16 @@ public class VirtualMachineEntity extends PanacheEntity {
 
     @Type(JsonType.class)
     @Column(columnDefinition = "jsonb")
-    public String specification;
+    public String information;
 
     public VirtualMachineState state;
 
-    public static VirtualMachineEntity add(ObjectMapper mapper, UUID machineId, UserEntity user, VirtualMachineService.VirtualMachineSpecification specification, VirtualMachineState state) {
+    public static VirtualMachineEntity add(ObjectMapper mapper, UUID machineId, UserEntity user, VirtualMachineInformation information, VirtualMachineState state) {
         VirtualMachineEntity virtualMachine = new VirtualMachineEntity();
         virtualMachine.machineId = machineId;
         virtualMachine.owner = user;
         try {
-            virtualMachine.specification = mapper.writeValueAsString(specification);
+            virtualMachine.information = mapper.writeValueAsString(information);
         } catch (JsonProcessingException e) {
             throw new RuntimeException(e);
         }
@@ -44,12 +45,12 @@ public class VirtualMachineEntity extends PanacheEntity {
         return virtualMachine;
     }
 
-    public static VirtualMachineEntity put(ObjectMapper mapper, UUID machineId, UserEntity newOwner, VirtualMachineService.VirtualMachineSpecification specification, VirtualMachineState state) {
+    public static VirtualMachineEntity put(ObjectMapper mapper, UUID machineId, UserEntity newOwner, VirtualMachineInformation information, VirtualMachineState state) {
         if (exists(machineId)) {
             final var virtualMachine = findByMachineId(machineId);
             virtualMachine.owner = newOwner;
             try {
-                virtualMachine.specification = mapper.writeValueAsString(specification);
+                virtualMachine.information = mapper.writeValueAsString(information);
             } catch (JsonProcessingException e) {
                 throw new RuntimeException(e);
             }
@@ -57,7 +58,7 @@ public class VirtualMachineEntity extends PanacheEntity {
             virtualMachine.persistAndFlush();
             return virtualMachine;
         } else {
-            return add(mapper, machineId, newOwner, specification, state);
+            return add(mapper, machineId, newOwner, information, state);
         }
     }
 
@@ -97,10 +98,19 @@ public class VirtualMachineEntity extends PanacheEntity {
                 .update("state = ?1 where machineId = ?2", state, machineId);
     }
 
-    @JsonIgnore
-    public VirtualMachineService.VirtualMachineSpecification parseSpecification(ObjectMapper mapper) {
+    public static void updateInformation(ObjectMapper mapper, UUID machineId, VirtualMachineInformation from) {
         try {
-            return mapper.readValue(specification, VirtualMachineService.VirtualMachineSpecification.class);
+            VirtualMachineEntity
+                    .update("information = ?1 where machineId = ?2", mapper.writeValueAsString(from), machineId);
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @JsonIgnore
+    public VirtualMachineInformation parseInformation(ObjectMapper mapper) {
+        try {
+            return mapper.readValue(information, VirtualMachineInformation.class);
         } catch (JsonProcessingException e) {
             throw new RuntimeException(e);
         }

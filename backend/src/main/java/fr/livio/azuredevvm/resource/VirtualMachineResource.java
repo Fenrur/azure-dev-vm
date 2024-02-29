@@ -68,7 +68,8 @@ public class VirtualMachineResource {
         }
     }
 
-    public record VirtualMachinesByUserValue(UUID machineId, VirtualMachineService.VirtualMachineSpecification spec, VirtualMachineState state) {
+    public record VirtualMachinesByUserValue(UUID machineId, VirtualMachineInformation info,
+                                             VirtualMachineState state) {
     }
 
     public record VirtualMachinesByUserResponseBody(Map<String, List<VirtualMachinesByUserValue>> virtualMachines) {
@@ -87,8 +88,8 @@ public class VirtualMachineResource {
                     .listAllVirtualMachines()
                     .stream()
                     .collect(CollectorUtils.toMultivaluedMap(
-                            virtualMachine -> virtualMachine.owner.username,
-                            virtualMachine -> new VirtualMachinesByUserValue(virtualMachine.machineId, virtualMachine.parseSpecification(mapper), virtualMachine.state)
+                                    virtualMachine -> virtualMachine.owner.username,
+                                    virtualMachine -> new VirtualMachinesByUserValue(virtualMachine.machineId, virtualMachine.parseInformation(mapper), virtualMachine.state)
                             )
                     );
 
@@ -100,7 +101,7 @@ public class VirtualMachineResource {
                 .stream()
                 .collect(CollectorUtils.toMultivaluedMap(
                                 virtualMachine -> virtualMachine.owner.username,
-                                virtualMachine -> new VirtualMachinesByUserValue(virtualMachine.machineId, virtualMachine.parseSpecification(mapper), virtualMachine.state)
+                                virtualMachine -> new VirtualMachinesByUserValue(virtualMachine.machineId, virtualMachine.parseInformation(mapper), virtualMachine.state)
                         )
                 );
 
@@ -202,7 +203,7 @@ public class VirtualMachineResource {
 
         @JsonTypeName("linux")
         record Linux(String hostname,
-                     String rootUsername, VirtualMachineService.AzureImage azureImage) implements CreateVirtualMachineRequestBody {
+                     String rootUsername, AzureImage azureImage) implements CreateVirtualMachineRequestBody {
             @Override
             public VirtualMachineService.VirtualMachineSpecification.Linux toVirtualMachineSpecification(String password) {
                 return new VirtualMachineService.VirtualMachineSpecification.Linux(hostname, rootUsername, password, azureImage);
@@ -210,14 +211,15 @@ public class VirtualMachineResource {
         }
 
         @JsonTypeName("windows")
-        record Windows(String version, VirtualMachineService.AzureImage azureImage) implements CreateVirtualMachineRequestBody {
+        record Windows(String hostname,
+                       String adminUsername, AzureImage azureImage) implements CreateVirtualMachineRequestBody {
             @Override
             public VirtualMachineService.VirtualMachineSpecification.Windows toVirtualMachineSpecification(String password) {
-                return new VirtualMachineService.VirtualMachineSpecification.Windows(version, azureImage);
+                return new VirtualMachineService.VirtualMachineSpecification.Windows(hostname, adminUsername, password, azureImage);
             }
         }
 
-        VirtualMachineService.AzureImage azureImage();
+        AzureImage azureImage();
 
         @JsonIgnore
         VirtualMachineService.VirtualMachineSpecification toVirtualMachineSpecification(String password);
@@ -295,7 +297,7 @@ public class VirtualMachineResource {
         user.persistAndFlush();
 
         try {
-            VirtualMachineEntity.put(mapper, machineId, user, spec, VirtualMachineState.CREATING);
+            VirtualMachineEntity.put(mapper, machineId, user, VirtualMachineInformation.from(spec), VirtualMachineState.CREATING);
         } catch (Exception e) {
             throw HttpProblem.builder()
                     .withTitle("Not found user in db for creating")
@@ -303,12 +305,16 @@ public class VirtualMachineResource {
                     .build();
         }
 
-        Thread.startVirtualThread(() -> {
+        Thread.ofPlatform().start(() -> {
             try {
                 userTransaction.begin();
 
-                virtualMachineService.create(machineId, spec);
-                VirtualMachineEntity.updateState(machineId, VirtualMachineState.RUNNING);
+                final var createdVirtualMachine = virtualMachineService.create(machineId, spec);
+
+                final VirtualMachineEntity virtualMachine = VirtualMachineEntity.getByMachineId(machineId);
+                virtualMachine.state = VirtualMachineState.RUNNING;
+                virtualMachine.information = mapper.writeValueAsString(VirtualMachineInformation.from(createdVirtualMachine));
+                virtualMachine.persistAndFlush();
 
                 userTransaction.commit();
             } catch (Exception e) {

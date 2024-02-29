@@ -93,12 +93,7 @@ public class VirtualMachineService {
 
         final PublicIpAddress provisionnedPublicIpAddress = getPublicIpAddress(machineId);
 
-        return switch (spec) {
-            case VirtualMachineSpecification.Linux linux ->
-                    new CreatedVirtualMachine.Linux(linux.hostname, linux.rootUsername, linux.password, provisionnedPublicIpAddress.ipAddress());
-            case VirtualMachineSpecification.Windows windows ->
-                    throw new VirtualMachineServiceException("Not implemented");
-        };
+        return CreatedVirtualMachine.from(provisionnedPublicIpAddress.ipAddress(), spec);
     }
 
     public void delete(UUID machineId) {
@@ -144,7 +139,7 @@ public class VirtualMachineService {
                         .withRegion(Region.EUROPE_WEST)
                         .withExistingResourceGroup(PREFIX_RESOURCE_GROUP_NAME + machineId)
                         .withExistingPrimaryNetworkInterface(networkInterface)
-                        .withLatestLinuxImage("debian", "debian-12", "12")
+                        .withLatestLinuxImage(linux.azureImage().publisher(), linux.azureImage().offer(), linux.azureImage().sku())
                         .withRootUsername(linux.rootUsername())
                         .withRootPassword(linux.password())
                         .withComputerName(linux.hostname())
@@ -152,7 +147,18 @@ public class VirtualMachineService {
                         .create();
             }
             case VirtualMachineSpecification.Windows windows -> {
-                throw new VirtualMachineServiceException("Not implemented");
+                yield arm
+                        .virtualMachines()
+                        .define(machineId.toString())
+                        .withRegion(Region.EUROPE_WEST)
+                        .withExistingResourceGroup(PREFIX_RESOURCE_GROUP_NAME + machineId)
+                        .withExistingPrimaryNetworkInterface(networkInterface)
+                        .withLatestWindowsImage(windows.azureImage().publisher(), windows.azureImage().offer(), windows.azureImage().sku())
+                        .withAdminUsername(windows.adminUsername())
+                        .withAdminPassword(windows.password())
+                        .withComputerName(windows.hostname())
+                        .withSize("Standard_DS1_v2")
+                        .create();
             }
         };
     }
@@ -234,30 +240,25 @@ public class VirtualMachineService {
 
     @RegisterForReflection
     @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
-    public sealed interface VirtualMachineSpecification {
-        AzureImage azureImage();
-
-        @JsonTypeName("linux")
-        @RegisterForReflection
-        record Linux(String hostname, String rootUsername, String password,
-                     AzureImage azureImage) implements VirtualMachineSpecification {
-        }
-
-        @JsonTypeName("windows")
-        @RegisterForReflection
-        record Windows(String version, AzureImage azureImage) implements VirtualMachineSpecification {
-        }
-    }
-
-    @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
     public sealed interface CreatedVirtualMachine {
         @JsonTypeName("linux")
+        @RegisterForReflection
         record Linux(String hostname, String rootUsername, String password,
-                     String publicAddress) implements CreatedVirtualMachine {
+                     AzureImage azureImage, String publicAddress) implements CreatedVirtualMachine {
         }
 
         @JsonTypeName("windows")
-        record Windows() implements CreatedVirtualMachine {
+        @RegisterForReflection
+        record Windows(String hostname, String adminUsername, String password, AzureImage azureImage, String publicAddress) implements CreatedVirtualMachine {
+        }
+
+        static CreatedVirtualMachine from(String publicAddress, VirtualMachineSpecification spec) {
+            return switch (spec) {
+                case VirtualMachineSpecification.Linux linux ->
+                        new Linux(linux.hostname, linux.rootUsername, linux.password, linux.azureImage, publicAddress);
+                case VirtualMachineSpecification.Windows windows ->
+                        new Windows(windows.hostname, windows.adminUsername, windows.password, windows.azureImage, publicAddress);
+            };
         }
     }
 
@@ -267,12 +268,25 @@ public class VirtualMachineService {
         }
     }
 
-    public record AzureImage(String publisher, String offer, String sku) {
-    }
-
     public static class ExistingVirtualMachineException extends Exception {
         public ExistingVirtualMachineException() {
             super("Virtual machine already exists");
+        }
+    }
+
+    @RegisterForReflection
+    @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
+    public sealed static interface VirtualMachineSpecification {
+
+        @JsonTypeName("linux")
+        @RegisterForReflection
+        record Linux(String hostname, String rootUsername, String password,
+                     AzureImage azureImage) implements VirtualMachineSpecification {
+        }
+
+        @JsonTypeName("windows")
+        @RegisterForReflection
+        record Windows(String hostname, String adminUsername, String password, AzureImage azureImage) implements VirtualMachineSpecification {
         }
     }
 }

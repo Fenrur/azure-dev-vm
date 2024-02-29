@@ -2,7 +2,7 @@
 
 import {useCredential, useUser, useVirtualMachineMaxThreshold} from "@/app/store";
 import {useRouter} from 'next/navigation';
-import {Card, CardContent, CardDescription, CardHeader, CardTitle,} from "@/components/ui/card"
+import {Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle,} from "@/components/ui/card"
 import {Button} from "@/components/ui/button";
 
 import {
@@ -24,9 +24,15 @@ import {Toaster} from "@/components/ui/sonner";
 import {toast} from "sonner";
 import {ScrollArea} from "@/components/ui/scroll-area";
 import {HoverCard, HoverCardContent, HoverCardTrigger} from "@/components/ui/hover-card";
-import {getVirtualMachineMaxThreshold} from "@/app/repository/vm-repository";
-import {Space} from "lucide-react";
+import {
+    createVirtualMachine,
+    deleteVirtualMachine,
+    getVirtualMachineMaxThreshold,
+    getVirtualMachines
+} from "@/app/repository/vm-repository";
+import {Monitor, PlaneTakeoff, Rocket, Space, Trash2} from "lucide-react";
 import {Separator} from "@/components/ui/separator";
+import useSWRMutation from "swr/mutation";
 
 function useGetMe() {
     const {credential} = useCredential();
@@ -68,7 +74,7 @@ export default function Home() {
 
     useEffect(() => {
         if (userError) {
-            toast.error("Impossible de charger vos informations", {
+            toast.error("Impossible de charger vos informations utilisateur", {
                 description: "Veuillez réessayer.",
             })
         }
@@ -177,6 +183,8 @@ export function NewVirtualMachine() {
     const [api, setApi] = useState<CarouselApi>()
     const [current, setCurrent] = useState(0)
     const {user} = useUser()
+    const {mutateUser} = useGetMe()
+    const {credential} = useCredential()
 
     const disableDeployButton = useMemo(() => {
         if (user) {
@@ -197,10 +205,36 @@ export function NewVirtualMachine() {
         })
     }, [api])
 
-    const handleDeploy = () => {
+    const handleDeploy = async () => {
         const selectableVm = vms[current - 1];
 
-        console.log(selectableVm)
+        if (!credential || !user) return
+
+        let machineId;
+        switch (selectableVm.osType) {
+            case "linux":
+                machineId = await createVirtualMachine("http://localhost:8080", credential, {
+                    type: "linux",
+                    hostname: user.username,
+                    rootUsername: user.username,
+                    password: "P@ssw0rdP@ssw0rd",
+                    azureImage: selectableVm.azureImage
+                })
+                break;
+            case "windows":
+                machineId = await createVirtualMachine("http://localhost:8080", credential, {
+                    type: "windows",
+                    hostname: user.username,
+                    adminUsername: user.username,
+                    password: "P@ssw0rdP@ssw0rd",
+                    azureImage: selectableVm.azureImage
+                })
+                break;
+        }
+
+        await mutateUser()
+
+        console.log(machineId)
     }
 
     return (
@@ -235,7 +269,10 @@ export function NewVirtualMachine() {
                         <CarouselPrevious/>
                         <CarouselNext/>
                     </Carousel>
-                    <Button disabled={disableDeployButton} onClick={handleDeploy}>Déployer</Button>
+                    <Button disabled={disableDeployButton} onClick={handleDeploy}>
+                        <Rocket className="mx-2"/>
+                        Déployer
+                    </Button>
                 </div>
             </CardContent>
         </Card>
@@ -250,18 +287,39 @@ export function ManageVirtualMachine() {
                 <CardDescription>Deploy your new project in one-click.</CardDescription>
             </CardHeader>
             <CardContent>
-                <ScrollArea className="grid">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <ManagedVirtualMachine/>
+                        <ManagedVirtualMachine/>
+                        <ManagedVirtualMachine/>
+                        <ManagedVirtualMachine/>
+                    </div>
 
-                </ScrollArea>
             </CardContent>
         </Card>
     )
 }
 
+function ManagedVirtualMachineProps() {
+
+}
+
 export function ManagedVirtualMachine() {
     return (
-        <Card>
-
+        <Card className="h-64 sm:h-96 hover:bg-secondary flex flex-col">
+            <CardHeader>
+                <CardTitle className="text-base">Ma super machine de DEV</CardTitle>
+                <CardDescription>Ubuntu Server 22.04 LTS</CardDescription>
+            </CardHeader>
+            <CardContent className="flex-grow">
+                <div className="flex flex-col justify-center items-center">
+                    <Monitor className="h-10 w-10"/>
+                    <span className="text-center">Nom de la machine</span>
+                </div>
+            </CardContent>
+            <CardFooter className="flex-row gap-4">
+                <Button className="flex-grow">Information</Button>
+                <Button variant="destructive"><Trash2 className=""/></Button>
+            </CardFooter>
         </Card>
     )
 }

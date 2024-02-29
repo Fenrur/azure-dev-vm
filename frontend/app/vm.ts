@@ -4,10 +4,13 @@ export interface AzureImage {
     sku: string,
 }
 
+export type OsType = 'linux' | 'windows'
+
 export interface SelectableVm {
     displayName: string,
     imageUrl: string,
-    azureImage: AzureImage
+    azureImage: AzureImage,
+    osType: OsType
 }
 
 export const vms: SelectableVm[] = [
@@ -18,7 +21,8 @@ export const vms: SelectableVm[] = [
             publisher: "canonical",
             offer: "0001-com-ubuntu-server-jammy",
             sku: "22_04-lts-gen2"
-        }
+        },
+        osType: "linux"
     },
     {
         displayName: "Debian 12",
@@ -27,7 +31,8 @@ export const vms: SelectableVm[] = [
             publisher: "debian",
             offer: "debian-12",
             sku: "12-gen2"
-        }
+        },
+        osType: "linux"
     },
     {
         displayName: "Red Hat Enterprise Linux 9.3",
@@ -36,7 +41,8 @@ export const vms: SelectableVm[] = [
             publisher: "redhat",
             offer: "RHEL",
             sku: "93-gen2"
-        }
+        },
+        osType: "linux"
     },
     {
         displayName: "Windows 11 Pro 2023",
@@ -45,7 +51,8 @@ export const vms: SelectableVm[] = [
             publisher: "microsoftwindowsdesktop",
             offer: "windows-11",
             sku: "win11-23h2-pro"
-        }
+        },
+        osType: "windows"
     },
     {
         displayName: "Windows 10 Pro 2022",
@@ -54,7 +61,8 @@ export const vms: SelectableVm[] = [
             publisher: "microsoftwindowsdesktop",
             offer: "windows-10",
             sku: "win10-22h2-pro"
-        }
+        },
+        osType: "windows"
     },
     {
         displayName: "Windows Server 2022",
@@ -63,6 +71,7 @@ export const vms: SelectableVm[] = [
             publisher: "microsoftwindowsserver",
             offer: "windowsserver",
             sku: "2022-datacenter-azure-edition"
-        }
+        },
+        osType: "windows"
     }
 ]

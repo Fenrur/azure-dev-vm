@@ -8,7 +8,7 @@ export interface BasicAuth {
 export async function fetchGetJsonResource<T extends z.ZodType<any, any>>(
     baseUrl: string,
     path: string,
-    schema: T,
+    responseSchema: T,
     query?: Record<string, string>,
     basicAuth?: BasicAuth
 ): Promise<z.infer<T>> {
@@ -31,7 +31,7 @@ export async function fetchGetJsonResource<T extends z.ZodType<any, any>>(
         throw await response.json()
     }
     const data = await response.json()
-    return schema.parse(data)
+    return responseSchema.parse(data)
 }
 
 export async function fetchDelete(
@@ -60,10 +60,10 @@ export async function fetchDelete(
     }
 }
 
-export async function postJsonResource<T extends z.ZodType<any, any>>(
+export async function fetchPostJsonResource<T extends z.ZodType<any, any>>(
     baseUrl: string,
     path: string,
-    schema: T,
+    responseSchema: T,
     body: object,
     basicAuth?: BasicAuth
 ): Promise<z.infer<T>> {
@@ -85,5 +85,5 @@ export async function postJsonResource<T extends z.ZodType<any, any>>(
         throw await response.json()
     }
     const data = await response.json()
-    return schema.parse(data)
+    return responseSchema.parse(data)
 }

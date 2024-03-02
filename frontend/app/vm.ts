@@ -13,7 +13,11 @@ export interface SelectableVm {
     osType: OsType
 }
 
-export const vms: SelectableVm[] = [
+export function findSelectableVm(azureImage: AzureImage, osType: OsType): SelectableVm | null {
+    return selectableVms.find(vm => vm.azureImage.publisher === azureImage.publisher && vm.azureImage.offer === azureImage.offer && vm.azureImage.sku === azureImage.sku && vm.osType === osType) || null
+}
+
+export const selectableVms: SelectableVm[] = [
     {
         displayName: "Ubuntu Server 22.04 LTS",
         imageUrl: "/images/ubuntu.svg",

@@ -1,14 +1,15 @@
 import {z} from "zod";
 import {BasicAuth, fetchDelete, fetchGetJsonResource, fetchPostJsonResource} from "@/app/repository/util-repository";
 
-const AzureImage = z.object({
+export const AzureImage = z.object({
     publisher: z.string(),
     offer: z.string(),
     sku: z.string()
 })
 export type AzureImage = z.infer<typeof AzureImage>;
 
-const VirtualMachineInformationLinux = z.object({
+export const VirtualMachineInformationLinux = z.object({
+    name: z.string(),
     type: z.literal('linux'),
     hostname: z.string(),
     rootUsername: z.string(),
@@ -17,7 +18,8 @@ const VirtualMachineInformationLinux = z.object({
     publicAddress: z.string().nullable()
 })
 
-const VirtualMachineInformationWindows = z.object({
+export const VirtualMachineInformationWindows = z.object({
+    name: z.string(),
     type: z.literal('windows'),
     hostname: z.string(),
     adminUsername: z.string(),
@@ -26,19 +28,20 @@ const VirtualMachineInformationWindows = z.object({
     publicAddress: z.string().nullable()
 })
 
-const VirtualMachineInformation = z.union([VirtualMachineInformationLinux, VirtualMachineInformationWindows]);
+export const VirtualMachineInformation = z.union([VirtualMachineInformationLinux, VirtualMachineInformationWindows]);
 export type VirtualMachineInformation = z.infer<typeof VirtualMachineInformation>;
 
-const VirtualMachineState = z.enum(['creating', 'running', 'deleting', 'deleted'])
+export const VirtualMachineState = z.enum(['creating', 'running', 'deleting', 'deleted'])
 export type VirtualMachineState = z.infer<typeof VirtualMachineState>;
 
 const VirtualMachinesByUserValue = z.object({
     machineId: z.string().uuid(),
-    spec: VirtualMachineInformation,
+    info: VirtualMachineInformation,
     state: VirtualMachineState
 })
+export type VirtualMachinesByUserValue = z.infer<typeof VirtualMachinesByUserValue>;
 
-const VirtualMachinesByUserResponse = z.object({
+export const VirtualMachinesByUserResponse = z.object({
     virtualMachines: z.record(z.string(), z.array(VirtualMachinesByUserValue)),
 });
 export type VirtualMachinesByUserResponse = z.infer<typeof VirtualMachinesByUserResponse>;
@@ -51,16 +54,18 @@ export function deleteVirtualMachine(baseUrl: string, vmId: string, basicAuth: B
     return fetchDelete(baseUrl, `/api/vms/${vmId}`, undefined, basicAuth);
 }
 
-interface CreateVirtualMachineRequestLinux {
+export interface CreateVirtualMachineRequestLinux {
     type: 'linux',
+    name: string,
     hostname: string,
     rootUsername: string,
     password: string,
     azureImage: AzureImage
 }
 
-interface CreateVirtualMachineRequestWindows {
+export interface CreateVirtualMachineRequestWindows {
     type: 'windows',
+    name: string,
     hostname: string,
     adminUsername: string,
     password: string,
@@ -69,7 +74,7 @@ interface CreateVirtualMachineRequestWindows {
 
 export type CreateVirtualMachineRequest = CreateVirtualMachineRequestLinux | CreateVirtualMachineRequestWindows;
 
-const CreateVirtualMachineResponse = z.object({
+export const CreateVirtualMachineResponse = z.object({
     machineId: z.string().uuid()
 })
 
@@ -77,7 +82,7 @@ export function createVirtualMachine(baseUrl: string, basicAuth: BasicAuth, req:
     return fetchPostJsonResource(baseUrl, '/api/vms', CreateVirtualMachineResponse, req, basicAuth);
 }
 
-const VirtualMachineMaxThresholdResponse = z.object({
+export const VirtualMachineMaxThresholdResponse = z.object({
     global: z.number().int(),
     admin: z.number().int(),
     advanced: z.number().int(),

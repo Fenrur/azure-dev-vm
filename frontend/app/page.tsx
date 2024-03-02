@@ -40,6 +40,8 @@ import {Tooltip, TooltipContent, TooltipProvider, TooltipTrigger} from "@/compon
 import {Badge} from "@/components/ui/badge";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import {Label} from "@/components/ui/label";
+import StatusIndicator from "@/components/ui/status-indicator";
+import * as generator from 'generate-password';
 
 function useGetMe() {
     const {credential} = useCredential();
@@ -158,7 +160,7 @@ export default function Home() {
     return (
         <main className="w-screen h-screen p-5 flex flex-col xl:flex-none gap-5 xl:grid xl:grid-cols-5 grid-rows-6">
             <Toaster richColors/>
-            <Header className="col-span-5 row-span-1"></Header>
+            <Header className="col-span-5 row-span-1 xl:h-full"></Header>
             <NewVirtualMachine className="col-span-2 row-span-5"/>
             <ManageVirtualMachine className="col-span-3 row-span-5"/>
         </main>
@@ -197,8 +199,8 @@ export function Header({className}: HeaderProps) {
     }
 
     return (
-        <header className={`${className} h-full`}>
-            <Card className={`h-full`}>
+        <header className={`${className}`}>
+            <Card className="xl:h-full">
                 <CardHeader className="flex-row place-items-center justify-between">
                     <div>
                         <CardTitle>Azure Dev VM</CardTitle>
@@ -209,7 +211,7 @@ export function Header({className}: HeaderProps) {
                             <span>.</span>
                         </CardDescription>
                     </div>
-                    <div className="flex space-x-2.5">
+                    <div className="flex space-x-2.5 ml-5">
                         <Theme/>
                         <HoverCard openDelay={100} closeDelay={100}>
                             <HoverCardTrigger><Coins className="h-full"
@@ -375,6 +377,17 @@ export function NewVirtualMachine({className}: NewVirtualMachineProps) {
 
             if (!user) return
 
+            const password = generator.generate({
+                length: 16,
+                numbers: true,
+                symbols: true,
+                uppercase: true,
+                lowercase: true,
+                excludeSimilarCharacters: true,
+                strict: true
+            });
+
+
             switch (selectableVm.osType) {
                 case "linux":
                     await createVirtualMachine({
@@ -382,7 +395,7 @@ export function NewVirtualMachine({className}: NewVirtualMachineProps) {
                         type: "linux",
                         hostname: user.username,
                         rootUsername: user.username,
-                        password: "P@ssw0rdP@ssw0rd",
+                        password: password,
                         azureImage: selectableVm.azureImage
                     })
                     break;
@@ -392,7 +405,7 @@ export function NewVirtualMachine({className}: NewVirtualMachineProps) {
                         type: "windows",
                         hostname: user.username,
                         adminUsername: user.username,
-                        password: "P@ssw0rdP@ssw0rd",
+                        password: password,
                         azureImage: selectableVm.azureImage
                     })
                     break;
@@ -551,11 +564,12 @@ export function ManagedVirtualMachine({value}: ManagedVirtualMachineProps) {
 
     return (
         <Card className="h-64 sm:h-72 flex flex-col">
-            <CardHeader>
+            <CardHeader className="pb-2">
                 <div className="flex">
                     <Badge variant="secondary">{value.info.name}</Badge>
                     <div className="flex-grow"></div>
                 </div>
+                <StatusIndicator status={value.state}/>
             </CardHeader>
             <CardContent className="flex-grow">
                 <div className="flex flex-col gap-5 content-center mt-5">

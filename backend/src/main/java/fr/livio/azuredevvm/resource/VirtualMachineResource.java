@@ -20,9 +20,8 @@ import org.jboss.resteasy.reactive.ResponseStatus;
 
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
+import java.util.stream.Stream;
 
 @Path("/api/vms")
 @RunOnVirtualThread
@@ -68,8 +67,14 @@ public class VirtualMachineResource {
         }
     }
 
-    public record VirtualMachinesByUserValue(UUID machineId, VirtualMachineInformation info,
+    public record VirtualMachinesByUserValue(@JsonIgnore long id, UUID machineId, VirtualMachineInformation info,
                                              VirtualMachineState state) {
+
+        @Override
+        @JsonIgnore
+        public long id() {
+            return id;
+        }
     }
 
     public record VirtualMachinesByUserResponseBody(Map<String, List<VirtualMachinesByUserValue>> virtualMachines) {
@@ -89,9 +94,13 @@ public class VirtualMachineResource {
                     .stream()
                     .collect(CollectorUtils.toMultivaluedMap(
                                     virtualMachine -> virtualMachine.owner.username,
-                                    virtualMachine -> new VirtualMachinesByUserValue(virtualMachine.machineId, virtualMachine.parseInformation(mapper), virtualMachine.state)
+                                    virtualMachine -> new VirtualMachinesByUserValue(virtualMachine.id, virtualMachine.machineId, virtualMachine.parseInformation(mapper), virtualMachine.state)
                             )
                     );
+
+            for (Map.Entry<String, List<VirtualMachinesByUserValue>> entry : collect.entrySet()) {
+                entry.getValue().sort(Comparator.comparingLong(VirtualMachinesByUserValue::id));
+            }
 
             return new VirtualMachinesByUserResponseBody(collect);
         }
@@ -101,9 +110,13 @@ public class VirtualMachineResource {
                 .stream()
                 .collect(CollectorUtils.toMultivaluedMap(
                                 virtualMachine -> virtualMachine.owner.username,
-                                virtualMachine -> new VirtualMachinesByUserValue(virtualMachine.machineId, virtualMachine.parseInformation(mapper), virtualMachine.state)
+                                virtualMachine -> new VirtualMachinesByUserValue(virtualMachine.id, virtualMachine.machineId, virtualMachine.parseInformation(mapper), virtualMachine.state)
                         )
                 );
+
+        for (Map.Entry<String, List<VirtualMachinesByUserValue>> entry : collect.entrySet()) {
+            entry.getValue().sort(Comparator.comparingLong(VirtualMachinesByUserValue::id));
+        }
 
         return new VirtualMachinesByUserResponseBody(collect);
     }
@@ -136,8 +149,8 @@ public class VirtualMachineResource {
 
             Thread.startVirtualThread(() -> {
                 try {
-                    userTransaction.begin();
                     virtualMachineService.delete(machineId);
+                    userTransaction.begin();
                     if (VirtualMachineEntity.deleteByMachineId(machineId) == 0) {
                         throw HttpProblem.builder()
                                 .withTitle("Not found machine in db")
@@ -183,8 +196,8 @@ public class VirtualMachineResource {
 
             Thread.startVirtualThread(() -> {
                 try {
-                    userTransaction.begin();
                     virtualMachineService.delete(machineId);
+                    userTransaction.begin();
                     if (VirtualMachineEntity.deleteByMachineId(machineId) == 0) {
                         throw HttpProblem.builder()
                                 .withTitle("Not found machine in db")
@@ -202,27 +215,33 @@ public class VirtualMachineResource {
     public sealed interface CreateVirtualMachineRequestBody {
 
         @JsonTypeName("linux")
-        record Linux(String hostname,
+        record Linux(String name, String hostname, String password,
                      String rootUsername, AzureImage azureImage) implements CreateVirtualMachineRequestBody {
             @Override
-            public VirtualMachineService.VirtualMachineSpecification.Linux toVirtualMachineSpecification(String password) {
+            public VirtualMachineService.VirtualMachineSpecification.Linux toVirtualMachineSpecification() {
                 return new VirtualMachineService.VirtualMachineSpecification.Linux(hostname, rootUsername, password, azureImage);
             }
         }
 
         @JsonTypeName("windows")
-        record Windows(String hostname,
+        record Windows(String name, String hostname, String password,
                        String adminUsername, AzureImage azureImage) implements CreateVirtualMachineRequestBody {
             @Override
-            public VirtualMachineService.VirtualMachineSpecification.Windows toVirtualMachineSpecification(String password) {
+            public VirtualMachineService.VirtualMachineSpecification.Windows toVirtualMachineSpecification() {
                 return new VirtualMachineService.VirtualMachineSpecification.Windows(hostname, adminUsername, password, azureImage);
             }
         }
 
+        String name();
+
+        String hostname();
+
+        String password();
+
         AzureImage azureImage();
 
         @JsonIgnore
-        VirtualMachineService.VirtualMachineSpecification toVirtualMachineSpecification(String password);
+        VirtualMachineService.VirtualMachineSpecification toVirtualMachineSpecification();
     }
 
     public record CreateVirtualMachineResponseBody(UUID machineId) {
@@ -238,7 +257,8 @@ public class VirtualMachineResource {
     public CreateVirtualMachineResponseBody createVirtualMachine(@Context SecurityContext securityContext, CreateVirtualMachineRequestBody body) throws NoSuchAlgorithmException {
         final String appUsername = securityContext.getUserPrincipal().getName();
         final UUID machineId = UUID.randomUUID();
-        final var spec = body.toVirtualMachineSpecification("P@ssw0rdP@ssw0rd");
+
+        final var spec = body.toVirtualMachineSpecification();
 
         if (VirtualMachineEntity.exists(machineId)) {
             throw HttpProblem.builder()
@@ -297,7 +317,14 @@ public class VirtualMachineResource {
         user.persistAndFlush();
 
         try {
-            VirtualMachineEntity.put(mapper, machineId, user, VirtualMachineInformation.from(spec), VirtualMachineState.CREATING);
+            var information = switch (body) {
+                case CreateVirtualMachineRequestBody.Linux linux ->
+                    new VirtualMachineInformation.Linux(linux.name, linux.hostname, linux.rootUsername, linux.password, linux.azureImage, Optional.empty());
+                case CreateVirtualMachineRequestBody.Windows windows ->
+                    new VirtualMachineInformation.Windows(windows.name, windows.hostname, windows.adminUsername, windows.password, windows.azureImage, Optional.empty());
+            };
+
+            VirtualMachineEntity.put(mapper, machineId, user, information, VirtualMachineState.CREATING);
         } catch (Exception e) {
             throw HttpProblem.builder()
                     .withTitle("Not found user in db for creating")
@@ -305,15 +332,22 @@ public class VirtualMachineResource {
                     .build();
         }
 
-        Thread.ofPlatform().start(() -> {
+        Thread.startVirtualThread(() -> {
             try {
-                userTransaction.begin();
-
                 final var createdVirtualMachine = virtualMachineService.create(machineId, spec);
 
+                userTransaction.begin();
                 final VirtualMachineEntity virtualMachine = VirtualMachineEntity.getByMachineId(machineId);
                 virtualMachine.state = VirtualMachineState.RUNNING;
-                virtualMachine.information = mapper.writeValueAsString(VirtualMachineInformation.from(createdVirtualMachine));
+
+                var information = switch (body) {
+                    case CreateVirtualMachineRequestBody.Linux linux ->
+                        new VirtualMachineInformation.Linux(linux.name, linux.hostname, linux.rootUsername, linux.password, linux.azureImage, Optional.of(createdVirtualMachine.publicAddress()));
+                    case CreateVirtualMachineRequestBody.Windows windows ->
+                        new VirtualMachineInformation.Windows(windows.name, windows.hostname, windows.adminUsername, windows.password, windows.azureImage, Optional.of(createdVirtualMachine.publicAddress()));
+                };
+
+                virtualMachine.information = mapper.writeValueAsString(information);
                 virtualMachine.persistAndFlush();
 
                 userTransaction.commit();

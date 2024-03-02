@@ -260,6 +260,12 @@ public class VirtualMachineService {
                         new Windows(windows.hostname, windows.adminUsername, windows.password, windows.azureImage, publicAddress);
             };
         }
+
+        String hostname();
+
+        AzureImage azureImage();
+
+        String publicAddress();
     }
 
     public static class VirtualMachineServiceException extends RuntimeException {
@@ -276,7 +282,7 @@ public class VirtualMachineService {
 
     @RegisterForReflection
     @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
-    public sealed static interface VirtualMachineSpecification {
+    public sealed interface VirtualMachineSpecification {
 
         @JsonTypeName("linux")
         @RegisterForReflection

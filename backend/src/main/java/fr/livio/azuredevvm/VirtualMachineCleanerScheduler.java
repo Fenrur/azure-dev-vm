@@ -28,10 +28,11 @@ public class VirtualMachineCleanerScheduler {
             final UUID machineId = entry.getKey();
             final OffsetDateTime timeCreated = entry.getValue();
             if (OffsetDateTime.now().isAfter(timeCreated.plusMinutes(10)) && VirtualMachineEntity.getByMachineId(machineId).state == VirtualMachineState.RUNNING) {
-                Thread.ofPlatform().start(() -> {
+                Thread.startVirtualThread(() -> {
                     try {
-                        userTransaction.begin();
                         virtualMachineService.delete(machineId);
+
+                        userTransaction.begin();
                         VirtualMachineEntity.deleteByMachineId(machineId);
 
                         Log.info("\uD83E\uDDF9 Virtual machine " + machineId + " deleted");

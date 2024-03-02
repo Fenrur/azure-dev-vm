@@ -81,7 +81,10 @@ public class VirtualMachineEntity extends PanacheEntity {
     }
 
     public static Long deleteFromUser(UUID machineId, UserEntity user) {
-        VirtualMachineEntity.find("machineId = ?1 and owner = ?2", machineId, user).firstResult().delete();
+        VirtualMachineEntity
+                .find("machineId = ?1 and owner = ?2", machineId, user)
+                .firstResult()
+                .delete();
         return 1L;
     }
 
@@ -90,7 +93,9 @@ public class VirtualMachineEntity extends PanacheEntity {
     }
 
     public static VirtualMachineEntity getByMachineId(UUID machineId) {
-        return VirtualMachineEntity.find("machineId", machineId).firstResult();
+        return VirtualMachineEntity
+                .find("machineId", machineId)
+                .firstResult();
     }
 
     public static void updateState(UUID machineId, VirtualMachineState state) {

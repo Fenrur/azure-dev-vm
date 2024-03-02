@@ -1,0 +1,12 @@
+@keyframes blur-animation {
+    0%, 100% {
+        filter: blur(0);
+    }
+    50% {
+        filter: blur(4px);
+    }
+}
+
+.animate-blur {
+    animation: blur-animation 2s infinite;
+}

@@ -339,3 +339,5 @@ Temporary Items
 
 ### dotenv template
 .env
+
+frontend/pnpm-lock.yaml

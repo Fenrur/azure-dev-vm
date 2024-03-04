@@ -1,5 +1,7 @@
 # Azure Dev VM
 
+![Screenshot de l'app Web](screenshot.png).
+
 Le projet consiste en la réalisation d’une application web pour que les
 développeurs puissent avoir facilement des environnements jetables de
 tests et d’évaluation de leurs logiciels. L’idée est qu’un développeur qui
@@ -69,7 +71,7 @@ Par défaut, les machines virtuelles sont supprimées après 10 minutes.
 
 Éxecuter la commande suivante pour compiler le backend
 ```bash
-mvn install
+mvn clean install
 ```
 
 ## Exécution

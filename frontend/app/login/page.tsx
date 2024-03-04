@@ -10,15 +10,16 @@ import {getMe} from "@/app/repository/user-repository";
 import {toast, Toaster} from "sonner"
 import {useRouter} from 'next/navigation';
 import useSWRMutation from "swr/mutation";
+import {BASE_URL} from "@/app/env";
 
-export function CardWithForm() {
+function CardWithForm() {
     const {setCredential, credential} = useCredential()
     const {setUser} = useUser()
 
     const [username, setUsername] = useState("")
     const [password, setPassword] = useState("")
 
-    const getMeFetcher = () => getMe("http://localhost:8080", {username, password});
+    const getMeFetcher = () => getMe(BASE_URL, {username, password});
     const {data: userData, error: errorUserData, trigger, isMutating} = useSWRMutation('/api/users/me', getMeFetcher, {})
 
     const router = useRouter();
@@ -27,14 +28,14 @@ export function CardWithForm() {
         if (credential) {
             router.push("/")
         }
-    }, [credential]);
+    }, [credential, router]);
 
     useEffect(() => {
         if (userData) {
             setCredential({username, password})
             setUser(userData)
         }
-    }, [userData]);
+    }, [password, setCredential, setUser, userData, username]);
 
     useEffect(() => {
         if (errorUserData) {
@@ -62,7 +63,7 @@ export function CardWithForm() {
                 <form>
                     <div className="grid w-full items-center gap-4">
                         <div className="flex flex-col space-y-1.5">
-                            <Label htmlFor="username">Nom d'utilisateur</Label>
+                            <Label htmlFor="username">Nom d&apos;utilisateur</Label>
                             <Input value={username} onChange={event => setUsername(event.target.value)} id="username"
                                    placeholder="Mon nom d'utilisateur"/>
                         </div>

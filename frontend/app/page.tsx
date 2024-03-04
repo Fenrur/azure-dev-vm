@@ -42,11 +42,12 @@ import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, Di
 import {Label} from "@/components/ui/label";
 import StatusIndicator from "@/components/ui/status-indicator";
 import * as generator from 'generate-password';
+import {BASE_URL} from "@/app/env";
 
 function useGetMe() {
     const {credential} = useCredential();
 
-    const getMeFetcher = () => getMe("http://localhost:8080", credential !== null ? credential : {
+    const getMeFetcher = () => getMe(BASE_URL, credential !== null ? credential : {
         username: "",
         password: ""
     });
@@ -63,7 +64,7 @@ function useGetMe() {
 function useGetListVirtualMachinesByUser() {
     const {credential} = useCredential()
 
-    const getVirtualMachinesFetcher = () => getVirtualMachines("http://localhost:8080", credential !== null ? credential : {
+    const getVirtualMachinesFetcher = () => getVirtualMachines(BASE_URL, credential !== null ? credential : {
         username: "",
         password: ""
     });
@@ -80,7 +81,7 @@ function useGetListVirtualMachinesByUser() {
 }
 
 function useGetVirtualMachineMaxThreshold() {
-    const maxThresholdFetcher = () => getVirtualMachineMaxThreshold("http://localhost:8080");
+    const maxThresholdFetcher = () => getVirtualMachineMaxThreshold(BASE_URL);
     const {data} = useSWR("/api/vms/max-threshold", maxThresholdFetcher)
 
     return {
@@ -90,7 +91,7 @@ function useGetVirtualMachineMaxThreshold() {
 
 function useDeleteVirtualMachine(vmId: string) {
     const {credential} = useCredential()
-    const deleteVirtualMachineFetcher = () => deleteVirtualMachine("http://localhost:8080", vmId, credential !== null ? credential : {
+    const deleteVirtualMachineFetcher = () => deleteVirtualMachine(BASE_URL, vmId, credential !== null ? credential : {
         username: "",
         password: ""
     });
@@ -110,7 +111,7 @@ function useCreateVirtualMachine() {
 
     const createVirtualMachineFetcher = (_: any, {arg}: {
         arg: CreateVirtualMachineRequest
-    }) => createVirtualMachine("http://localhost:8080", credential !== null ? credential : {
+    }) => createVirtualMachine(BASE_URL, credential !== null ? credential : {
         username: "",
         password: ""
     }, arg);
@@ -141,7 +142,7 @@ export default function Home() {
         if (maxThreshold) {
             setMaxThreshold(maxThreshold)
         }
-    }, [maxThreshold]);
+    }, [maxThreshold, setMaxThreshold]);
 
     useEffect(() => {
         if (userError) {
@@ -155,7 +156,7 @@ export default function Home() {
         if (user) {
             setUser(user)
         }
-    }, [user]);
+    }, [setUser, user]);
 
     return (
         <main className="w-screen h-screen p-5 flex flex-col xl:flex-none gap-5 xl:grid xl:grid-cols-5 grid-rows-6">
@@ -171,7 +172,7 @@ interface HeaderProps {
     className?: string
 }
 
-export function Header({className}: HeaderProps) {
+function Header({className}: HeaderProps) {
     const {setCredential} = useCredential()
     const {user} = useUser()
     const {maxThreshold} = useVirtualMachineMaxThreshold()
@@ -258,7 +259,7 @@ interface NewVirtualMachineProps {
     className?: string
 }
 
-export function NewVirtualMachine({className}: NewVirtualMachineProps) {
+function NewVirtualMachine({className}: NewVirtualMachineProps) {
     type StateNewVirtualMachine = 'selecting' | 'configuring' | 'deploying'
 
     const [api, setApi] = useState<CarouselApi>()
@@ -284,9 +285,9 @@ export function NewVirtualMachine({className}: NewVirtualMachineProps) {
         // @ts-ignore
         const vms = virtualMachines.virtualMachines[user?.username] || []
         return vms.length
-    }, [virtualMachines]);
+    }, [user?.username, virtualMachines]);
 
-    const getThreshold = () => {
+    const getThreshold = useMemo(() => {
         if (!user || !maxThreshold) return 0
         switch (user.role) {
             case "admin":
@@ -298,7 +299,7 @@ export function NewVirtualMachine({className}: NewVirtualMachineProps) {
             default:
                 return 0
         }
-    }
+    }, [maxThreshold, user]);
 
     const disableButton = useMemo(() => {
         if (!user) return "L'utilisateur n'est pas défini."
@@ -306,7 +307,7 @@ export function NewVirtualMachine({className}: NewVirtualMachineProps) {
         if (user.token <= 0) {
             return "Vous n'avez plus de jeton pour créer une machine virtuelle.";
         }
-        if (countVirtualMachines >= getThreshold()) {
+        if (countVirtualMachines >= getThreshold) {
             return "Vous avez atteint votre limite de machines virtuelles.";
         }
         if (state === 'configuring' && vmNameInput.trim().length === 0) {
@@ -315,7 +316,7 @@ export function NewVirtualMachine({className}: NewVirtualMachineProps) {
             return "Déploiement en cours...";
         }
         return null;
-    }, [user, countVirtualMachines, state, vmNameInput]);
+    }, [user, countVirtualMachines, getThreshold, state, vmNameInput]);
 
     useEffect(() => {
         if (createVirtualMachineData) {
@@ -331,7 +332,7 @@ export function NewVirtualMachine({className}: NewVirtualMachineProps) {
                 setState('selecting')
             })
         }
-    }, [createVirtualMachineData]);
+    }, [createVirtualMachineData, mutateUser, mutateVirtualMachines]);
 
     useEffect(() => {
         if (createVirtualMachineError) {
@@ -472,8 +473,10 @@ export function NewVirtualMachine({className}: NewVirtualMachineProps) {
                                         <Card>
                                             <CardContent className="grid grid-rows-5 aspect-square p-6">
                                                 <div className="row-span-4">
-                                                    <img src={vm.imageUrl} alt={vm.displayName}
-                                                         className="w-full h-full object-contain select-none"/>
+                                                    <picture>
+                                                        <img src={vm.imageUrl} alt={vm.displayName}
+                                                             className="w-full h-full object-contain select-none"/>
+                                                    </picture>
                                                 </div>
                                                 <div className="row-span-1 grid justify-center content-end">
                                                     <span
@@ -502,7 +505,7 @@ interface ManageVirtualMachineProps {
     className?: string
 }
 
-export function ManageVirtualMachine({className}: ManageVirtualMachineProps) {
+function ManageVirtualMachine({className}: ManageVirtualMachineProps) {
     const {credential} = useCredential()
     const {virtualMachines} = useGetListVirtualMachinesByUser()
 
@@ -535,7 +538,7 @@ interface ManagedVirtualMachineProps {
     value: VirtualMachinesByUserValue
 }
 
-export function ManagedVirtualMachine({value}: ManagedVirtualMachineProps) {
+function ManagedVirtualMachine({value}: ManagedVirtualMachineProps) {
     const {mutateVirtualMachines} = useGetListVirtualMachinesByUser()
     const {
         deleteVirtualMachine,
@@ -580,7 +583,9 @@ export function ManagedVirtualMachine({value}: ManagedVirtualMachineProps) {
                                 <CardDescription className="text-center">{value.info.type} OS</CardDescription>
                             </> :
                             <>
-                                <img src={selectableVm.imageUrl} alt={"a"} className="object-contain w-full h-12"/>
+                                <picture>
+                                    <img src={selectableVm.imageUrl} alt={"a"} className="object-contain w-full h-12"/>
+                                </picture>
                                 <CardDescription className="text-center">{selectableVm.displayName}</CardDescription>
                             </>
                     }

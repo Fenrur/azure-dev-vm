@@ -1,6 +1,24 @@
 # Azure Dev VM
 
-![Screenshot de l'app Web](screenshot.png).
+![Screenshot de l'app Web](screenshot.png)
+
+<!-- TOC -->
+* [Azure Dev VM](#azure-dev-vm)
+  * [Utilisation](#utilisation)
+    * [Regles applicatives](#regles-applicatives)
+      * [Roles](#roles)
+      * [Gestions des seuils des machines virtuelles](#gestions-des-seuils-des-machines-virtuelles)
+      * [Gestions des identifiants Azure](#gestions-des-identifiants-azure)
+    * [Gestions des identités utilisateurs](#gestions-des-identités-utilisateurs)
+    * [Les tokens](#les-tokens)
+    * [Auto suppression des machines virtuelles](#auto-suppression-des-machines-virtuelles)
+  * [Prérequis](#prérequis)
+  * [Installation](#installation)
+  * [Exécution](#exécution)
+    * [Accéder à l'application web](#accéder-à-lapplication-web)
+    * [Accéder à la base de données](#accéder-à-la-base-de-données)
+    * [Accéder à Swagger pour la documentation de l'API](#accéder-à-swagger-pour-la-documentation-de-lapi)
+<!-- TOC -->
 
 Le projet consiste en la réalisation d’une application web pour que les
 développeurs puissent avoir facilement des environnements jetables de
@@ -11,17 +29,7 @@ RDP, et qu’il n’ait pas à s’occuper des détails de la machine virtuelle.
 commandé une machine virtuelle, a testé son application et s’est
 déconnecté.
 
-## Prérequis
-
-- [JDK 21](https://www.oracle.com/java/technologies/javase/jdk21-archive-downloads.html)
-- [Maven](https://maven.apache.org/)
-- [Docker](https://www.docker.com/)
-- Avoir les 3 logiciels dans le `PATH`
-
 ## Utilisation
-
-### Acceder à l'application web
-Vous pouvez accéder à l'application web via le lien suivant: [http://localhost:12002](http://localhost:12002)
 
 ### Regles applicatives
 
@@ -64,6 +72,13 @@ Les tokens sont utilisés pour lancer les machines virtuelles. Chaque utilisateu
 
 Par défaut, les machines virtuelles sont supprimées après 10 minutes.
 
+## Prérequis
+
+- [JDK 21](https://www.oracle.com/java/technologies/javase/jdk21-archive-downloads.html)
+- [Maven](https://maven.apache.org/)
+- [Docker](https://www.docker.com/)
+- Avoir les 3 logiciels dans le `PATH`
+
 ## Installation
 
 - Cloner le projet
@@ -81,3 +96,17 @@ mvn clean install
 ```bash
 docker-compose up
 ```
+
+### Accéder à l'application web
+Vous pouvez accéder à l'application web via le lien suivant: [http://localhost:12002](http://localhost:12002)
+
+### Accéder à la base de données
+
+Par défaut dans le docker-compose, les identifiants de la base de données sont
+- `username`: `primary`
+- `password`: `primary`
+- `database`: `primary`
+- `url`: `jdbc:postgresql://localhost:12000/primary`
+
+### Accéder à Swagger pour la documentation de l'API
+Vous pouvez accéder à la base de données via le lien suivant: [Swagger UI](http://localhost:12001/q/swagger-ui/)

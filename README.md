@@ -1,4 +1,4 @@
-~~# Azure Dev VM
+# Azure Dev VM
 
 Le projet consiste en la réalisation d’une application web pour que les
 développeurs puissent avoir facilement des environnements jetables de

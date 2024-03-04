@@ -1,4 +1,1 @@
-export function backendUrl() {
-    // @ts-ignore
-    return process.env.BACKEND_URL as string;
-}
+export const BASE_URL = process.env.NEXT_PUBLIC_BACKEND_URL
